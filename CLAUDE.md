@@ -23,7 +23,7 @@ dist/           — Compiled JS output
 - `npx @modelcontextprotocol/inspector` — Debug/test tools interactively
 
 ## Architecture
-- **Auth**: Credentials are read from macOS Keychain (service: `garmin-connect-mcp`, accounts: `username` and `password`). Falls back to `GARMIN_USERNAME`/`GARMIN_PASSWORD` env vars. OAuth tokens are cached to `~/.garmin-mcp-tokens` and reused across sessions. Falls back to fresh login if token is expired.
+- **Auth**: Credentials are read from the OS credential store (macOS Keychain, Windows Credential Manager, or Linux libsecret). Falls back to `GARMIN_USERNAME`/`GARMIN_PASSWORD` env vars. OAuth tokens are cached to `~/.garmin-mcp-tokens` and reused across sessions. Falls back to fresh login if token is expired.
 - **Client singleton**: `getClient()` lazily initializes and caches the Garmin client.
 - **Tools**: Each `server.tool()` call registers an MCP tool. Tools accept optional date strings (`YYYY-MM-DD`) and return JSON-formatted results.
 - **Transport**: Uses stdio (stdin/stdout) — standard for Claude Code MCP servers.

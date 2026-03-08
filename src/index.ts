@@ -12,16 +12,76 @@ import os from "os";
 const execFileAsync = promisify(execFile);
 
 const TOKEN_DIR = path.join(os.homedir(), ".garmin-mcp-tokens");
-const KEYCHAIN_SERVICE = "garmin-connect-mcp";
+const CREDENTIAL_SERVICE = "garmin-connect-mcp";
 
-async function getKeychainValue(account: string): Promise<string> {
-  const { stdout } = await execFileAsync("security", [
-    "find-generic-password",
-    "-s", KEYCHAIN_SERVICE,
-    "-a", account,
-    "-w",
-  ]);
-  return stdout.trim();
+async function getCredentialFromOS(account: string): Promise<string> {
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    // macOS Keychain
+    const { stdout } = await execFileAsync("security", [
+      "find-generic-password",
+      "-s", CREDENTIAL_SERVICE,
+      "-a", account,
+      "-w",
+    ]);
+    return stdout.trim();
+  }
+
+  if (platform === "win32") {
+    // Windows Credential Manager via PowerShell
+    // Use -encodedCommand to avoid injection via string interpolation
+    const target = `${CREDENTIAL_SERVICE}/${account}`;
+    const script = `(Get-StoredCredential -Target '${target.replace(/'/g, "''")}').GetNetworkCredential().Password`;
+    const encoded = Buffer.from(script, "utf16le").toString("base64");
+    const { stdout } = await execFileAsync("powershell", [
+      "-NoProfile", "-EncodedCommand", encoded,
+    ]);
+    const result = stdout.trim();
+    if (!result) throw new Error(`No credential found for target: ${target}`);
+    return result;
+  }
+
+  if (platform === "linux") {
+    // Linux libsecret (GNOME Keyring / KDE Wallet via secret-tool)
+    const { stdout } = await execFileAsync("secret-tool", [
+      "lookup", "service", CREDENTIAL_SERVICE, "account", account,
+    ]);
+    return stdout.trim();
+  }
+
+  throw new Error(`Unsupported platform: ${platform}. Use GARMIN_USERNAME and GARMIN_PASSWORD env vars instead.`);
+}
+
+function getCredentialHelpText(): string {
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    return (
+      "Store credentials in macOS Keychain:\n" +
+      `  security add-generic-password -s "${CREDENTIAL_SERVICE}" -a "username" -w "your-email"\n` +
+      `  security add-generic-password -s "${CREDENTIAL_SERVICE}" -a "password" -w "your-password"`
+    );
+  }
+
+  if (platform === "win32") {
+    return (
+      "Store credentials in Windows Credential Manager (PowerShell):\n" +
+      `  New-StoredCredential -Target '${CREDENTIAL_SERVICE}/username' -UserName 'username' -Password 'your-email' -Persist LocalMachine\n` +
+      `  New-StoredCredential -Target '${CREDENTIAL_SERVICE}/password' -UserName 'password' -Password 'your-password' -Persist LocalMachine\n` +
+      "  (Requires the CredentialManager module: Install-Module -Name CredentialManager)"
+    );
+  }
+
+  if (platform === "linux") {
+    return (
+      "Store credentials using secret-tool (libsecret):\n" +
+      `  echo -n 'your-email' | secret-tool store --label='Garmin Username' service ${CREDENTIAL_SERVICE} account username\n` +
+      `  echo -n 'your-password' | secret-tool store --label='Garmin Password' service ${CREDENTIAL_SERVICE} account password`
+    );
+  }
+
+  return "Set GARMIN_USERNAME and GARMIN_PASSWORD environment variables.";
 }
 
 async function getCredentials(): Promise<{ username: string; password: string }> {
@@ -33,18 +93,17 @@ async function getCredentials(): Promise<{ username: string; password: string }>
     };
   }
 
-  // Otherwise read from macOS Keychain
+  // Otherwise read from OS credential store
   try {
     const [username, password] = await Promise.all([
-      getKeychainValue("username"),
-      getKeychainValue("password"),
+      getCredentialFromOS("username"),
+      getCredentialFromOS("password"),
     ]);
     return { username, password };
   } catch {
     throw new Error(
-      "Garmin credentials not found. Store them in macOS Keychain:\n" +
-      `  security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "username" -w "your-email"\n` +
-      `  security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "password" -w "your-password"`
+      "Garmin credentials not found. " + getCredentialHelpText() +
+      "\n\nOr set GARMIN_USERNAME and GARMIN_PASSWORD environment variables."
     );
   }
 }
@@ -99,10 +158,9 @@ const server = new McpServer({
 
 // --- Tools ---
 
-server.tool(
+server.registerTool(
   "get-user-profile",
-  "Get the user's Garmin Connect profile information",
-  {},
+  { description: "Get the user's Garmin Connect profile information" },
   async () => {
     const gc = await getClient();
     const profile = await gc.getUserProfile();
@@ -110,10 +168,9 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-user-settings",
-  "Get the user's Garmin Connect settings (units, display preferences, etc.)",
-  {},
+  { description: "Get the user's Garmin Connect settings (units, display preferences, etc.)" },
   async () => {
     const gc = await getClient();
     const settings = await gc.getUserSettings();
@@ -121,13 +178,15 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-activities",
-  "Get a list of recent activities (runs, rides, swims, etc.)",
   {
-    start: z.number().optional().describe("Start index for pagination (default 0)"),
-    limit: z.number().optional().describe("Number of activities to return (default 20)"),
-    activityType: z.string().optional().describe("Filter by activity type (e.g. 'running', 'cycling', 'swimming')"),
+    description: "Get a list of recent activities (runs, rides, swims, etc.)",
+    inputSchema: {
+      start: z.number().optional().describe("Start index for pagination (default 0)"),
+      limit: z.number().optional().describe("Number of activities to return (default 20)"),
+      activityType: z.string().optional().describe("Filter by activity type (e.g. 'running', 'cycling', 'swimming')"),
+    },
   },
   async ({ start, limit, activityType }) => {
     const gc = await getClient();
@@ -136,11 +195,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-activity-details",
-  "Get detailed information about a specific activity",
   {
-    activityId: z.number().describe("The activity ID"),
+    description: "Get detailed information about a specific activity",
+    inputSchema: {
+      activityId: z.number().describe("The activity ID"),
+    },
   },
   async ({ activityId }) => {
     const gc = await getClient();
@@ -149,10 +210,9 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "count-activities",
-  "Get a count of all activities by type",
-  {},
+  { description: "Get a count of all activities by type" },
   async () => {
     const gc = await getClient();
     const counts = await gc.countActivities();
@@ -160,11 +220,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-steps",
-  "Get step count for a specific date",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    description: "Get step count for a specific date",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -173,11 +235,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-heart-rate",
-  "Get heart rate data for a specific date",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    description: "Get heart rate data for a specific date",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -186,11 +250,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-sleep-data",
-  "Get detailed sleep data for a specific date",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: last night)"),
+    description: "Get detailed sleep data for a specific date",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: last night)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -199,11 +265,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-sleep-duration",
-  "Get sleep duration (hours and minutes) for a specific date",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: last night)"),
+    description: "Get sleep duration (hours and minutes) for a specific date",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: last night)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -212,11 +280,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-daily-weight",
-  "Get weight data for a specific date",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    description: "Get weight data for a specific date",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -225,11 +295,13 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-daily-hydration",
-  "Get hydration intake for a specific date (in ounces)",
   {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    description: "Get hydration intake for a specific date (in ounces)",
+    inputSchema: {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    },
   },
   async ({ date }) => {
     const gc = await getClient();
@@ -238,12 +310,14 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-workouts",
-  "Get saved workouts from Garmin Connect",
   {
-    start: z.number().optional().describe("Start index (default 0)"),
-    limit: z.number().optional().describe("Number of workouts to return (default 20)"),
+    description: "Get saved workouts from Garmin Connect",
+    inputSchema: {
+      start: z.number().optional().describe("Start index (default 0)"),
+      limit: z.number().optional().describe("Number of workouts to return (default 20)"),
+    },
   },
   async ({ start, limit }) => {
     const gc = await getClient();
@@ -252,10 +326,9 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "get-golf-summary",
-  "Get golf round summary data",
-  {},
+  { description: "Get golf round summary data" },
   async () => {
     const gc = await getClient();
     const summary = await gc.getGolfSummary();

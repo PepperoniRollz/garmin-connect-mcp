@@ -31,14 +31,34 @@ npm install
 npm run build
 ```
 
-### 2. Store your Garmin credentials in macOS Keychain
+### 2. Store your Garmin credentials
 
+Credentials are stored in your OS credential manager — never in plain text config files.
+
+**macOS** (Keychain):
 ```bash
 security add-generic-password -s "garmin-connect-mcp" -a "username" -w "your-garmin-email@example.com"
 security add-generic-password -s "garmin-connect-mcp" -a "password" -w "your-garmin-password"
 ```
 
-Your credentials are stored encrypted in the system keychain — never in plain text config files.
+**Windows** (Credential Manager via PowerShell):
+```powershell
+# Requires: Install-Module -Name CredentialManager -Force
+New-StoredCredential -Target 'garmin-connect-mcp/username' -UserName 'username' -Password 'your-garmin-email@example.com' -Persist LocalMachine
+New-StoredCredential -Target 'garmin-connect-mcp/password' -UserName 'password' -Password 'your-garmin-password' -Persist LocalMachine
+```
+
+**Linux** (libsecret / GNOME Keyring):
+```bash
+echo -n 'your-garmin-email@example.com' | secret-tool store --label='Garmin Username' service garmin-connect-mcp account username
+echo -n 'your-garmin-password' | secret-tool store --label='Garmin Password' service garmin-connect-mcp account password
+```
+
+**All platforms** (environment variables fallback):
+```bash
+export GARMIN_USERNAME="your-garmin-email@example.com"
+export GARMIN_PASSWORD="your-garmin-password"
+```
 
 ### 3. Add the MCP server to Claude Code
 
@@ -67,27 +87,19 @@ npx @modelcontextprotocol/inspector
 
 ## Authentication
 
-Credentials are read from the **macOS Keychain** at startup (service: `garmin-connect-mcp`). This avoids storing secrets in plain text config files. Environment variables `GARMIN_USERNAME` and `GARMIN_PASSWORD` are supported as a fallback (e.g. for CI).
+Credentials are read from your **OS credential store** at startup:
+- **macOS**: Keychain (`security` CLI)
+- **Windows**: Credential Manager (`CredentialManager` PowerShell module)
+- **Linux**: libsecret (`secret-tool` CLI — works with GNOME Keyring, KDE Wallet, etc.)
+- **Fallback**: `GARMIN_USERNAME` and `GARMIN_PASSWORD` environment variables (all platforms)
 
 After the first login, OAuth tokens are cached to `~/.garmin-mcp-tokens` so subsequent launches don't require re-authentication.
-
-To update your credentials:
-
-```bash
-# Delete old entries
-security delete-generic-password -s "garmin-connect-mcp" -a "username"
-security delete-generic-password -s "garmin-connect-mcp" -a "password"
-
-# Add new ones
-security add-generic-password -s "garmin-connect-mcp" -a "username" -w "new-email"
-security add-generic-password -s "garmin-connect-mcp" -a "password" -w "new-password"
-```
 
 > **Note**: Garmin does not offer an official public API for consumer data. This server uses the [garmin-connect](https://www.npmjs.com/package/garmin-connect) library which reverse-engineers the Garmin Connect web endpoints. Auth may occasionally break when Garmin updates their SSO flow.
 
 ## Security
 
-- Credentials are stored in the macOS Keychain, not in plain text files
+- Credentials are stored in your OS credential manager, not in plain text files
 - Environment variables supported as fallback but not recommended for daily use
 - OAuth tokens are cached locally in `~/.garmin-mcp-tokens`
 - The server communicates over stdio only (no network server)
