@@ -1,0 +1,23 @@
+{
+  "name": "garmin-connect-mcp",
+  "version": "1.0.0",
+  "description": "MCP server connecting Claude Code to Garmin Connect for fitness and health data",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "garmin-connect": "^1.6.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
