@@ -10,7 +10,19 @@ Upgrade the existing `garmin-connect-mcp` server (TypeScript, official MCP SDK, 
 - **Phase 2 — Configuration: DONE** (commit `1057553`)
 - **Phase 3 — OAuth 2.1 Authorization: DONE** (built-in auth server via SDK
   `mcpAuthRouter`; see Phase 3 notes below)
-- **Phase 4 — Deployment: in progress** (see Phase 4 Environment Facts)
+- **Phase 4 — Deployment: DONE.** Deployed per the hosting pattern below:
+  host-level Caddy reverse-proxying the subdomain to the localhost-only
+  published container port (compose default 8081), compose v2, named
+  volumes for token cache and auth DB, `.env` (0600) from
+  `.env.deploy.example`. Public acceptance passed: valid Let's Encrypt
+  cert; 401 + RFC 9728/8414 discovery with `resource` exactly equal to
+  the public MCP URL; full OAuth flow + authenticated tool call via MCP
+  Inspector over the public internet; real client IPs in audit logs
+  through the proxy chain (TRUSTED_PROXY); tokens and auth state survive
+  `docker compose restart`; co-tenant sites unaffected; stdio unchanged.
+  Deployment note: Garmin throttles fresh logins from datacenter IPs
+  (429) — seed the token-cache volume with tokens minted on a
+  residential connection (any machine that has run the server locally).
 - Phases 5–6: not started
 
 ## Resolved Decisions
