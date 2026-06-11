@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.js.map
 .env
+*.db
+*.db-wal
+*.db-shm
+.playwright-mcp/
+garmin-mcp-phase4-facts.md

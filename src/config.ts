@@ -10,8 +10,18 @@ import path from 'path';
 
 import {z} from 'zod';
 
-import {CliFlag, DEFAULTS, EnvVar, TOKEN_DIR_NAME, TransportMode} from './constants.js';
+import {AUTH_DB_FILE_NAME, CliFlag, DEFAULTS, EnvVar, OAUTH, RoutePath, TOKEN_DIR_NAME, TransportMode} from './constants.js';
 import {LogLevel} from './logger.js';
+
+/** Settings that only exist in HTTP (remote connector) mode. */
+export interface HttpConfig {
+  /** Full public URL of the MCP endpoint; OAuth `resource` equals this exactly. */
+  publicUrl: URL;
+  /** bcrypt hash of the server owner's login password. */
+  serverOwnerPasswordHash: string;
+  /** SQLite file persisting OAuth clients, codes, and tokens. */
+  authDbPath: string;
+}
 
 export interface AppConfig {
   transportMode: TransportMode;
@@ -19,6 +29,8 @@ export interface AppConfig {
   port: number;
   /** Directory where the Garmin OAuth token cache is persisted. */
   tokenCacheDir: string;
+  /** Present only when transportMode is http. */
+  http?: HttpConfig;
 }
 
 /** Thrown when configuration is invalid; carries one entry per problem. */
@@ -96,6 +108,66 @@ function checkHttpCredentials(env: Env, issues: string[]): void {
   }
 }
 
+function resolvePublicUrl(env: Env, issues: string[]): URL | undefined {
+  const raw = env[EnvVar.PublicUrl];
+  if (raw === undefined || raw === '') {
+    issues.push(`${EnvVar.PublicUrl}: required in http mode (full public MCP endpoint URL, e.g. https://garmin-mcp.example.com${RoutePath.Mcp})`);
+    return undefined;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    issues.push(`${EnvVar.PublicUrl}: invalid URL "${raw}"`);
+    return undefined;
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    issues.push(`${EnvVar.PublicUrl}: must be http(s), got "${url.protocol}"`);
+    return undefined;
+  }
+  if (url.pathname !== RoutePath.Mcp || url.search !== '' || url.hash !== '') {
+    issues.push(`${EnvVar.PublicUrl}: path must be exactly "${RoutePath.Mcp}" with no query or fragment (the OAuth resource identifier must match the MCP endpoint URL exactly), got "${raw}"`);
+    return undefined;
+  }
+  return url;
+}
+
+function resolveOwnerPasswordHash(env: Env, issues: string[]): string | undefined {
+  const raw = env[EnvVar.ServerOwnerPasswordHash];
+  if (raw === undefined || raw === '') {
+    issues.push(`${EnvVar.ServerOwnerPasswordHash}: required in http mode (generate with: npm run hash-password)`);
+    return undefined;
+  }
+  if (!OAUTH.bcryptHashPattern.test(raw)) {
+    issues.push(`${EnvVar.ServerOwnerPasswordHash}: not a bcrypt hash (expected $2a$/$2b$/$2y$ prefix; generate with: npm run hash-password)`);
+    return undefined;
+  }
+  return raw;
+}
+
+function resolveAuthDbPath(env: Env, issues: string[]): string {
+  const raw = env[EnvVar.AuthDbPath];
+  if (raw === undefined) return path.join(os.homedir(), AUTH_DB_FILE_NAME);
+
+  const parsed = nonEmptyStringSchema.safeParse(raw);
+  if (!parsed.success) {
+    issues.push(`${EnvVar.AuthDbPath}: must not be empty when set`);
+    return path.join(os.homedir(), AUTH_DB_FILE_NAME);
+  }
+  return path.resolve(parsed.data);
+}
+
+function resolveHttpConfig(env: Env, issues: string[]): HttpConfig | undefined {
+  checkHttpCredentials(env, issues);
+  const publicUrl = resolvePublicUrl(env, issues);
+  const serverOwnerPasswordHash = resolveOwnerPasswordHash(env, issues);
+  const authDbPath = resolveAuthDbPath(env, issues);
+  if (publicUrl === undefined || serverOwnerPasswordHash === undefined) return undefined;
+  return {publicUrl, serverOwnerPasswordHash, authDbPath};
+}
+
 /**
  * Parses configuration from the environment and CLI flags.
  *
@@ -108,13 +180,11 @@ export function loadConfig(env: Env = process.env, argv: readonly string[] = pro
   const port = resolvePort(env, issues);
   const tokenCacheDir = resolveTokenCacheDir(env, issues);
   checkLogLevel(env, issues);
-  if (transportMode === TransportMode.Http) {
-    checkHttpCredentials(env, issues);
-  }
+  const http = transportMode === TransportMode.Http ? resolveHttpConfig(env, issues) : undefined;
 
   if (issues.length > 0) {
     throw new ConfigError(issues);
   }
 
-  return {transportMode, port, tokenCacheDir};
+  return {transportMode, port, tokenCacheDir, http};
 }

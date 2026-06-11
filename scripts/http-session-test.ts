@@ -1,9 +1,13 @@
 /**
  * Phase 1 acceptance: full Streamable HTTP session lifecycle against a
- * locally running HTTP-mode server (no auth yet).
+ * locally running HTTP-mode server. Since Phase 3 the MCP endpoint requires
+ * a bearer token; pass one via the OAUTH_TEST_TOKEN_FILE env var (a JSON
+ * file with an access_token field, as written by oauth-flow-test.ts).
  *
- *   npx tsx scripts/http-session-test.ts [baseUrl]
+ *   [OAUTH_TEST_TOKEN_FILE=tokens.json] npx tsx scripts/http-session-test.ts [baseUrl]
  */
+import fs from 'node:fs';
+
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -14,6 +18,13 @@ const SESSION_HEADER = 'mcp-session-id';
 const baseUrl = process.argv[2] ?? DEFAULT_BASE_URL;
 const mcpUrl = new URL(MCP_PATH, baseUrl);
 
+const tokenFile = process.env['OAUTH_TEST_TOKEN_FILE'];
+const accessToken = tokenFile !== undefined ?
+    (JSON.parse(fs.readFileSync(tokenFile, 'utf8')) as {access_token: string}).access_token :
+    undefined;
+const authHeaders: Record<string, string> =
+    accessToken !== undefined ? {authorization: `Bearer ${accessToken}`} : {};
+
 let failures = 0;
 
 function check(name: string, ok: boolean, detail?: string): void {
@@ -23,7 +34,7 @@ function check(name: string, ok: boolean, detail?: string): void {
 }
 
 // 1. Initialize: server must issue a session ID.
-const transport = new StreamableHTTPClientTransport(mcpUrl);
+const transport = new StreamableHTTPClientTransport(mcpUrl, {requestInit: {headers: authHeaders}});
 const client = new Client({name: 'phase1-acceptance', version: '0.0.0'});
 await client.connect(transport);
 const sessionId = transport.sessionId;
@@ -34,7 +45,7 @@ const {tools} = await client.listTools();
 check('tools/list on session returns tools', tools.length === 13, `${tools.length} tools`);
 
 // 3. Second session is independent (per-session transport map).
-const transport2 = new StreamableHTTPClientTransport(mcpUrl);
+const transport2 = new StreamableHTTPClientTransport(mcpUrl, {requestInit: {headers: authHeaders}});
 const client2 = new Client({name: 'phase1-acceptance-2', version: '0.0.0'});
 await client2.connect(transport2);
 check(
@@ -54,6 +65,7 @@ const stale = await fetch(mcpUrl, {
   headers: {
     'content-type': 'application/json',
     'accept': 'application/json, text/event-stream',
+    ...authHeaders,
     [SESSION_HEADER]: sessionId ?? '',
   },
   body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/list'}),
@@ -66,6 +78,7 @@ const noSession = await fetch(mcpUrl, {
   headers: {
     'content-type': 'application/json',
     'accept': 'application/json, text/event-stream',
+    ...authHeaders,
   },
   body: JSON.stringify({jsonrpc: '2.0', id: 2, method: 'tools/list'}),
 });

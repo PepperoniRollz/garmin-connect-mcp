@@ -19,9 +19,13 @@ src/config.ts       — Centralized env/CLI config parsing (zod, fail-fast)
 src/credentials.ts  — CredentialProvider interface + env/keyring/chained impls
 src/garminClient.ts — Garmin client singleton (configureGarminClient + getClient)
 src/server.ts       — createServer() factory: transport-agnostic tool registration
-src/entry/stdio.ts  — stdio transport entry point
-src/entry/http.ts   — Streamable HTTP entry point (Express, session map)
-scripts/            — Acceptance test scripts (run with tsx)
+src/entry/stdio.ts  — stdio transport entry point (no auth)
+src/entry/http.ts   — Streamable HTTP entry point (Express, session map,
+                      OAuth bearer gate, rate limits, idle-session sweep)
+src/auth/           — Built-in OAuth 2.1 authorization server (SDK
+                      mcpAuthRouter provider, SQLite store via node:sqlite,
+                      owner login page, redirect URI allowlist)
+scripts/            — Acceptance test scripts (run with tsx) + hash-password
 docs/SPEC.md        — Remote connector upgrade spec (phases, decisions)
 dist/               — Compiled JS output
 ```

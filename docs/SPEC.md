@@ -7,8 +7,10 @@ Upgrade the existing `garmin-connect-mcp` server (TypeScript, official MCP SDK, 
 ## Status
 
 - **Phase 1 — Core/Transport Separation: DONE** (commit `94fc6a7`)
-- **Phase 2 — Configuration: in progress**
-- Phases 3–6: not started
+- **Phase 2 — Configuration: DONE** (commit `1057553`)
+- **Phase 3 — OAuth 2.1 Authorization: DONE** (built-in auth server via SDK
+  `mcpAuthRouter`; see Phase 3 notes below)
+- Phases 4–6: not started
 
 ## Resolved Decisions
 
@@ -123,7 +125,13 @@ Goal: protect the MCP endpoint so only the owner can connect, while satisfying c
    - CORS: no permissive `*` on the MCP endpoint.
    - Audit log line for each successful/failed auth and each tool invocation (tool name only, not payload).
 
-**Acceptance:** MCP Inspector completes the full OAuth flow against a local instance; an unauthenticated request to the MCP endpoint returns 401 with correct discovery headers; a wrong-password login cannot obtain a code.
+**Acceptance (met):** MCP Inspector completes the full OAuth flow against a local instance; an unauthenticated request to the MCP endpoint returns 401 with correct discovery headers; a wrong-password login cannot obtain a code; tokens survive restart (SQLite via node:sqlite at `AUTH_DB_PATH`).
+
+**Phase 3 implementation notes:**
+- Owner credential is `SERVER_OWNER_PASSWORD_HASH` (bcrypt; generate with `npm run hash-password`) — plaintext never appears in config.
+- Loopback redirect URIs are matched on scheme+host only (any port, any path), not pinned to `/callback`: RFC 8252 §7.3 mandates variable ports, and real clients differ (Claude Code uses `/callback`, MCP Inspector `/oauth/callback`). Loopback redirects only reach the user's own machine; the registered URI still must match exactly at authorization time.
+- Refresh tokens rotate on use (OAuth 2.1); access tokens 1h, refresh 30d, codes/pending logins 10min, all single-use where applicable; tokens stored as SHA-256 hashes.
+- MCP sessions idle >30min are reaped every 5min (designed with token lifetimes; bearer token is re-validated on every request).
 
 ## Phase 4 — Deployment (DigitalOcean)
 
