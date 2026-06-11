@@ -1,33 +1,28 @@
 /**
- * Entry dispatcher: selects the transport mode from the --transport CLI flag
- * or the TRANSPORT_MODE env var. Defaults to stdio so existing Claude Code
- * configurations keep working unchanged.
+ * Entry dispatcher: loads and validates configuration, then starts the
+ * server in the configured transport mode. Defaults to stdio so existing
+ * Claude Code configurations keep working unchanged.
  */
-import {CliFlag, DEFAULTS, EnvVar, TransportMode} from './constants.js';
+import {AppConfig, ConfigError, loadConfig} from './config.js';
+import {TransportMode} from './constants.js';
 import {runHttp} from './entry/http.js';
 import {runStdio} from './entry/stdio.js';
 import {logger} from './logger.js';
 
-function isTransportMode(value: string): value is TransportMode {
-  return Object.values(TransportMode).includes(value as TransportMode);
-}
-
-function resolveTransportMode(): TransportMode {
-  const flagIndex = process.argv.indexOf(CliFlag.Transport);
-  const fromFlag = flagIndex !== -1 ? process.argv[flagIndex + 1] : undefined;
-  const raw = fromFlag ?? process.env[EnvVar.TransportMode];
-  if (raw === undefined) return DEFAULTS.transportMode;
-  if (!isTransportMode(raw)) {
-    const valid = Object.values(TransportMode).join(', ');
-    throw new Error(`Invalid transport mode "${raw}". Valid modes: ${valid}`);
+let config: AppConfig;
+try {
+  config = loadConfig();
+} catch (err) {
+  if (err instanceof ConfigError) {
+    logger.error('invalid configuration; fix the following and restart', {issues: err.issues});
+    process.exit(1);
   }
-  return raw;
+  throw err;
 }
 
-const mode = resolveTransportMode();
-if (mode === TransportMode.Http) {
-  await runHttp();
+if (config.transportMode === TransportMode.Http) {
+  await runHttp(config);
 } else {
-  await runStdio();
+  await runStdio(config);
 }
-logger.debug('server started', {mode});
+logger.debug('server started', {mode: config.transportMode});

@@ -9,6 +9,7 @@ export enum EnvVar {
   GarminPassword = 'GARMIN_PASSWORD',
   Port = 'PORT',
   TransportMode = 'TRANSPORT_MODE',
+  TokenCacheDir = 'TOKEN_CACHE_DIR',
   LogLevel = 'LOG_LEVEL',
 }
 

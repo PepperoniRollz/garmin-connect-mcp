@@ -14,30 +14,20 @@ import {randomUUID} from 'node:crypto';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
 import express, {Request, Response} from 'express';
-import {z} from 'zod';
 
+import {AppConfig} from '../config.js';
 import {
   DEFAULTS,
-  EnvVar,
   HeaderName,
   JSON_RPC_VERSION,
   JsonRpcErrorCode,
   RoutePath,
+  TransportMode,
 } from '../constants.js';
+import {createCredentialProvider} from '../credentials.js';
+import {configureGarminClient} from '../garminClient.js';
 import {logger} from '../logger.js';
 import {createServer} from '../server.js';
-
-const portSchema = z.coerce.number().int().min(1).max(65535);
-
-function resolvePort(): number {
-  const raw = process.env[EnvVar.Port];
-  if (raw === undefined) return DEFAULTS.port;
-  const parsed = portSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new Error(`Invalid ${EnvVar.Port} value "${raw}": must be an integer between 1 and 65535`);
-  }
-  return parsed.data;
-}
 
 function jsonRpcError(res: Response, status: number, code: JsonRpcErrorCode, message: string): void {
   res.status(status).json({
@@ -52,8 +42,12 @@ function getSessionId(req: Request): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export async function runHttp(): Promise<void> {
-  const port = resolvePort();
+export async function runHttp(config: AppConfig): Promise<void> {
+  configureGarminClient({
+    credentialProvider: createCredentialProvider(TransportMode.Http),
+    tokenCacheDir: config.tokenCacheDir,
+  });
+  const {port} = config;
   const app = express();
   app.use(express.json());
 
