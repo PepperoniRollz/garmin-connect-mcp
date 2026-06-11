@@ -54,7 +54,10 @@ elif docker compose version >/dev/null 2>&1; then
   echo "    already installed: $(docker compose version)"
 else
   apt-get update -qq
-  apt-get install -y -qq docker-compose-plugin
+  # Docker's apt repo names the plugin docker-compose-plugin; Ubuntu's own
+  # repos ship it as docker-compose-v2. Try both.
+  apt-get install -y -qq docker-compose-plugin 2>/dev/null ||
+      apt-get install -y -qq docker-compose-v2
   docker compose version
 fi
 
