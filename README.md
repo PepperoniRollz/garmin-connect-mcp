@@ -14,11 +14,26 @@ Runs in two modes from one codebase:
 
 ## Tools
 
-`get-user-profile`, `get-user-settings`, `get-activities`,
-`get-activity-details`, `count-activities`, `get-steps`, `get-heart-rate`,
-`get-sleep-data`, `get-sleep-duration`, `get-daily-weight`,
-`get-daily-hydration`, `get-workouts`, `get-golf-summary` — date inputs are
-optional `YYYY-MM-DD` strings defaulting to today / last night.
+Date inputs are optional `YYYY-MM-DD` strings defaulting to today (or last
+night for sleep tools).
+
+| Tool | Returns | Units / payload notes |
+|---|---|---|
+| `get-user-profile` | Garmin profile info | |
+| `get-user-settings` | Units, display preferences | |
+| `get-activities` | Recent activities (pagination, type filter) | |
+| `get-activity-details` | One activity by ID | |
+| `count-activities` | Activity counts by type | |
+| `get-daily-summary` | Total / active / resting (BMR) calories, steps, distance, intensity minutes, HR range, stress, Body Battery | Calories are **kilocalories** (dietary Calories); `totalKilocalories = activeKilocalories + bmrKilocalories`. Totals keep accruing until the day ends and the device syncs |
+| `get-steps` | Step count for a date | Can lag `get-daily-summary.totalSteps` until the next device sync |
+| `get-heart-rate` | Heart rate series + summary for a date | |
+| `get-sleep` | Condensed sleep: duration, deep/light/REM/awake stages, score, overnight HRV, RHR, Body Battery change | All durations in **seconds**. `date` = the morning the sleep ended |
+| `get-sleep-data` | Full raw sleep payload (movement, respiration, HR/Body Battery series) | Large payload; prefer `get-sleep` unless you need the series data |
+| `get-sleep-duration` | Sleep hours + minutes | |
+| `get-daily-weight` | Weight entries for a date | Weights are in **grams** (e.g. `81000` = 81 kg / ~178.6 lb) |
+| `get-daily-hydration` | Water intake for a date | **Ounces** |
+| `get-workouts` | Saved workout plans | |
+| `get-golf-summary` | Golf round summaries | |
 
 ## Quickstart: stdio mode (Claude Code)
 

@@ -93,7 +93,18 @@ export enum ToolName {
   GetDailyHydration = 'get-daily-hydration',
   GetWorkouts = 'get-workouts',
   GetGolfSummary = 'get-golf-summary',
+  GetDailySummary = 'get-daily-summary',
+  GetSleep = 'get-sleep',
 }
+
+/**
+ * Garmin Connect API endpoints called via the library's public get()
+ * escape hatch (no dedicated wrapper method exists for these).
+ */
+export const GARMIN_API = {
+  base: 'https://connectapi.garmin.com',
+  dailySummaryPath: '/usersummary-service/usersummary/daily/',
+} as const;
 
 /** Routes served by the built-in OAuth login flow (outside the SDK router). */
 export enum AuthRoutePath {
