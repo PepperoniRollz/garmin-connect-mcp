@@ -22,7 +22,11 @@ const POLL_INTERVAL_MS = 250;
 const workDir = mkdtempSync(path.join(tmpdir(), 'garmin-mcp-e2e-'));
 const tokenSavePath = path.join(workDir, 'tokens.json');
 
-function run(command: string, args: string[], env: NodeJS.ProcessEnv): ChildProcess {
+function run(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): ChildProcess {
   return spawn(command, args, {env, stdio: 'inherit'});
 }
 
@@ -48,7 +52,9 @@ async function waitForHealthz(): Promise<void> {
     }
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
-  throw new Error(`server did not become healthy within ${STARTUP_TIMEOUT_MS}ms`);
+  throw new Error(
+    `server did not become healthy within ${STARTUP_TIMEOUT_MS}ms`,
+  );
 }
 
 const serverEnv: NodeJS.ProcessEnv = {
