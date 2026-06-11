@@ -20,10 +20,26 @@ export interface GarminClientConfig {
 
 let clientConfig: GarminClientConfig | null = null;
 let clientPromise: Promise<GarminClient> | null = null;
+let displayNamePromise: Promise<string> | null = null;
 
 export function configureGarminClient(config: GarminClientConfig): void {
   clientConfig = config;
   clientPromise = null;
+  displayNamePromise = null;
+}
+
+/** The Garmin display name (user hash), cached for direct API calls. */
+export function getDisplayName(): Promise<string> {
+  if (!displayNamePromise) {
+    displayNamePromise = getClient()
+      .then(gc => gc.getUserProfile())
+      .then(profile => profile.displayName)
+      .catch(err => {
+        displayNamePromise = null; // allow retry on failure
+        throw err;
+      });
+  }
+  return displayNamePromise;
 }
 
 export function getClient(): Promise<GarminClient> {

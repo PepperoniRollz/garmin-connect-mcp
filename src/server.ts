@@ -6,16 +6,45 @@
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 
-import {AuditEvent, SERVER_INFO, ToolName} from './constants.js';
-import {getClient} from './garminClient.js';
+import {AuditEvent, GARMIN_API, SERVER_INFO, ToolName} from './constants.js';
+import {getClient, getDisplayName} from './garminClient.js';
 import {logger} from './logger.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Fields picked from the daily-summary payload (91 keys total; the rest are
+ * goal/internal bookkeeping). Calories are kilocalories (dietary Calories).
+ */
+const DAILY_SUMMARY_FIELDS = [
+  'calendarDate',
+  'totalKilocalories',
+  'activeKilocalories',
+  'bmrKilocalories',
+  'totalSteps',
+  'totalDistanceMeters',
+  'moderateIntensityMinutes',
+  'vigorousIntensityMinutes',
+  'intensityMinutesGoal',
+  'restingHeartRate',
+  'minHeartRate',
+  'maxHeartRate',
+  'averageStressLevel',
+  'bodyBatteryHighestValue',
+  'bodyBatteryLowestValue',
+  'sleepingSeconds',
+] as const;
 
 function parseDate(dateStr?: string): Date | undefined {
   if (!dateStr) return undefined;
   // Append time to avoid UTC midnight parsing (which shifts the date in western timezones)
   return new Date(dateStr + 'T00:00:00');
+}
+
+/** Local-timezone YYYY-MM-DD, matching the library's own date formatting. */
+function toDateString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function formatResult(data: unknown): {
@@ -268,6 +297,76 @@ export function createServer(): McpServer {
       const gc = await getClient();
       const summary = await gc.getGolfSummary();
       return formatResult(summary);
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetDailySummary,
+    {
+      description:
+        'Get the daily wellness summary: total, active, and resting (BMR) calories burned, steps, distance, intensity minutes, heart rate range, stress, Body Battery, and sleep seconds',
+      inputSchema: {
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe('Date in YYYY-MM-DD format (default: today)'),
+      },
+    },
+    audited(ToolName.GetDailySummary, async ({date}) => {
+      const gc = await getClient();
+      const displayName = await getDisplayName();
+      const calendarDate = date ?? toDateString(new Date());
+      const url = `${GARMIN_API.base}${GARMIN_API.dailySummaryPath}${encodeURIComponent(displayName)}`;
+      // No library wrapper exists for this endpoint; use its public get()
+      // escape hatch and pick the stable fields.
+      const summary = await gc.get<Record<string, unknown>>(url, {
+        params: {calendarDate},
+      });
+      const picked: Record<string, unknown> = {};
+      for (const field of DAILY_SUMMARY_FIELDS) {
+        picked[field] = summary[field] ?? null;
+      }
+      return formatResult(picked);
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetSleep,
+    {
+      description:
+        'Get a condensed sleep summary: duration, stage breakdown (deep/light/REM/awake), sleep score, overnight HRV, resting heart rate, and Body Battery change',
+      inputSchema: {
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe(
+            'Date the sleep ended, in YYYY-MM-DD format (default: last night)',
+          ),
+      },
+    },
+    audited(ToolName.GetSleep, async ({date}) => {
+      const gc = await getClient();
+      const sleep = await gc.getSleepData(parseDate(date));
+      const dto = sleep?.dailySleepDTO;
+      return formatResult({
+        date: dto?.calendarDate ?? date ?? toDateString(new Date()),
+        sleepTimeSeconds: dto?.sleepTimeSeconds ?? null,
+        napTimeSeconds: dto?.napTimeSeconds ?? null,
+        stages: {
+          deepSleepSeconds: dto?.deepSleepSeconds ?? null,
+          lightSleepSeconds: dto?.lightSleepSeconds ?? null,
+          remSleepSeconds: dto?.remSleepSeconds ?? null,
+          awakeSleepSeconds: dto?.awakeSleepSeconds ?? null,
+        },
+        overallSleepScore: dto?.sleepScores?.overall?.value ?? null,
+        avgSleepStress: dto?.avgSleepStress ?? null,
+        avgOvernightHrv: sleep?.avgOvernightHrv ?? null,
+        hrvStatus: sleep?.hrvStatus ?? null,
+        restingHeartRate: sleep?.restingHeartRate ?? null,
+        bodyBatteryChange: sleep?.bodyBatteryChange ?? null,
+      });
     }),
   );
 

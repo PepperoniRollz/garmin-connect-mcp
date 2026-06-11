@@ -33,11 +33,11 @@ const {tools} = await client.listTools();
 await transport.terminateSession();
 await client.close();
 
-if (tools.length === 13) {
+if (tools.length === 15) {
   console.log(
-    'PASS  pre-restart access token works after restart — 13 tools listed',
+    'PASS  pre-restart access token works after restart — 15 tools listed',
   );
   process.exit(0);
 }
-console.log(`FAIL  expected 13 tools, got ${tools.length}`);
+console.log(`FAIL  expected 15 tools, got ${tools.length}`);
 process.exit(1);
