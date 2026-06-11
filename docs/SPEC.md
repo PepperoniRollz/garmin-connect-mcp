@@ -10,7 +10,8 @@ Upgrade the existing `garmin-connect-mcp` server (TypeScript, official MCP SDK, 
 - **Phase 2 — Configuration: DONE** (commit `1057553`)
 - **Phase 3 — OAuth 2.1 Authorization: DONE** (built-in auth server via SDK
   `mcpAuthRouter`; see Phase 3 notes below)
-- Phases 4–6: not started
+- **Phase 4 — Deployment: in progress** (see Phase 4 Environment Facts)
+- Phases 5–6: not started
 
 ## Resolved Decisions
 
@@ -132,6 +133,44 @@ Goal: protect the MCP endpoint so only the owner can connect, while satisfying c
 - Loopback redirect URIs are matched on scheme+host only (any port, any path), not pinned to `/callback`: RFC 8252 §7.3 mandates variable ports, and real clients differ (Claude Code uses `/callback`, MCP Inspector `/oauth/callback`). Loopback redirects only reach the user's own machine; the registered URI still must match exactly at authorization time.
 - Refresh tokens rotate on use (OAuth 2.1); access tokens 1h, refresh 30d, codes/pending logins 10min, all single-use where applicable; tokens stored as SHA-256 hashes.
 - MCP sessions idle >30min are reaped every 5min (designed with token lifetimes; bearer token is re-validated on every request).
+
+## Phase 4 Hosting Pattern (shared host behind a host-level reverse proxy)
+
+The deployment targets a shared host where a host-level Caddy (systemd,
+`/etc/caddy/Caddyfile`) owns 80/443 and proxies each site to a
+localhost-published port. Host-specific details (real domain, co-tenant
+services, box topology) live in a gitignored `deploy/NOTES.md`, never in
+this repo. The pattern, with `garmin-mcp.example.com` as the placeholder:
+
+- The MCP container publishes to `127.0.0.1:<host-port>` only (compose
+  default 8081, parameterized via `GARMIN_MCP_HOST_PORT`); a new Caddy
+  site block proxies the subdomain to it. Do NOT join any co-tenant
+  Docker network and do NOT install a web server in the container.
+- **Layout:** app dir owned by the deploy user (e.g. `/opt/<app>/`),
+  `docker-compose.yml` + `.env` (mode 0600) beside it,
+  `restart: unless-stopped`, HTTP healthcheck, json-file logging capped
+  at 10m × 3 files.
+- **Compose v2 is the target.** If only legacy `docker-compose` v1 is
+  present, the v2 plugin install is part of the root setup script; the
+  compose file pins explicit volume/network/container names so state
+  survives a v1 → v2 transition.
+- Root-touching steps are concentrated in one reviewed, parameterized
+  script (`scripts/phase4-root-setup.sh`): install `docker-compose-plugin`,
+  back up and append the Caddyfile site block, `caddy validate` (restore
+  backup and abort without reloading on failure), `systemctl reload caddy`
+  (reload, NOT restart), optionally disable stray services.
+- **Reverse proxy + container note:** inside the container, the proxy's
+  connections arrive from the Docker bridge gateway, not loopback —
+  Express's trusted proxy is configurable via `TRUSTED_PROXY` (default
+  `loopback` for local dev) and set to the pinned bridge gateway
+  (compose default 172.28.0.1). The container listens on `0.0.0.0`
+  (`BIND_HOST`); exposure is controlled by the localhost-only publish.
+- **CDN/proxy layer:** the verified configuration is direct DNS
+  (Cloudflare gray-cloud / "DNS only"), with the origin's own
+  Let's Encrypt certificate. Flipping to the proxied (orange-cloud) mode
+  is an optional post-verification experiment — watch for SSE
+  idle-timeout flakiness on long-lived streams — with gray as the
+  documented fallback.
 
 ## Phase 4 — Deployment (DigitalOcean)
 

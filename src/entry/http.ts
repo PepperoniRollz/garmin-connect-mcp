@@ -45,9 +45,6 @@ import {AuthDb} from '../auth/db.js';
 import {createLoginRouter} from '../auth/login.js';
 import {OwnerAuthorizationProvider} from '../auth/provider.js';
 
-/** Express trust-proxy setting: trust only the local reverse proxy. */
-const TRUST_PROXY = 'loopback';
-
 interface SessionEntry {
   transport: StreamableHTTPServerTransport;
   lastActivityMs: number;
@@ -93,8 +90,13 @@ export async function runHttp(config: AppConfig): Promise<void> {
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(httpConfig.publicUrl);
 
   const app = express();
-  app.set('trust proxy', TRUST_PROXY);
+  app.set('trust proxy', httpConfig.trustedProxy);
   app.use(express.json());
+
+  // Unauthenticated liveness probe: no data, no auth, no rate limit.
+  app.get(RoutePath.Healthz, (_req: Request, res: Response) => {
+    res.status(200).json({status: 'ok'});
+  });
 
   // OAuth authorization server: /authorize, /token, /register, /revoke and
   // RFC 8414 + RFC 9728 discovery metadata (SDK applies its own rate limits).
@@ -203,9 +205,9 @@ export async function runHttp(config: AppConfig): Promise<void> {
   }, SESSION_SWEEP.sweepIntervalMs);
   sweep.unref();
 
-  app.listen(config.port, DEFAULTS.host, () => {
+  app.listen(config.port, httpConfig.bindHost, () => {
     logger.info('http transport listening', {
-      host: DEFAULTS.host,
+      host: httpConfig.bindHost,
       port: config.port,
       path: RoutePath.Mcp,
       publicUrl: httpConfig.publicUrl.href,

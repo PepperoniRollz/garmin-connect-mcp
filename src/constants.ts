@@ -14,6 +14,8 @@ export enum EnvVar {
   PublicUrl = 'GARMIN_MCP_PUBLIC_URL',
   ServerOwnerPasswordHash = 'SERVER_OWNER_PASSWORD_HASH',
   AuthDbPath = 'AUTH_DB_PATH',
+  TrustedProxy = 'TRUSTED_PROXY',
+  BindHost = 'BIND_HOST',
 }
 
 /** Supported transport modes for the server process. */
@@ -30,6 +32,7 @@ export enum CliFlag {
 /** HTTP route paths served in HTTP mode. */
 export enum RoutePath {
   Mcp = '/mcp',
+  Healthz = '/healthz',
 }
 
 /** HTTP header names used by the Streamable HTTP transport. */
@@ -58,6 +61,12 @@ export const DEFAULTS = {
   /** HTTP mode binds to loopback only; TLS termination is the proxy's job. */
   host: '127.0.0.1',
   transportMode: TransportMode.Stdio,
+  /**
+   * Express trust-proxy setting. 'loopback' suits a host-level reverse
+   * proxy or local dev; in Docker, set TRUSTED_PROXY to the bridge
+   * gateway IP so client IPs in audit logs and rate limiting are real.
+   */
+  trustedProxy: 'loopback',
 } as const;
 
 /** Name of the OS credential-store service entry holding Garmin credentials. */

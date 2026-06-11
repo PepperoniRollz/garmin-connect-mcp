@@ -1,0 +1,56 @@
+# Compose v2 is the target runtime; names are pinned explicitly (container,
+# volumes, network) so state survives if the stack was ever brought up with
+# legacy docker-compose v1, whose default project naming differs.
+#
+# Secrets come from ./.env (mode 0600) — see .env.example.
+services:
+  garmin-mcp:
+    build: .
+    image: garmin-mcp:latest
+    container_name: garmin-mcp
+    restart: unless-stopped
+    ports:
+      # Localhost-only publish; the host reverse proxy terminates TLS.
+      # Host port is interpolated from .env (GARMIN_MCP_HOST_PORT).
+      - "127.0.0.1:${GARMIN_MCP_HOST_PORT:-8081}:8080"
+    env_file: .env
+    environment:
+      TRANSPORT_MODE: http
+      PORT: "8080"
+      TOKEN_CACHE_DIR: /data/tokens
+      AUTH_DB_PATH: /data/auth/auth.db
+      # Listen on all container interfaces; outside exposure is controlled
+      # by the localhost-only port publish above.
+      BIND_HOST: 0.0.0.0
+      # The host reverse proxy reaches the container via the pinned bridge
+      # gateway below; override in .env if the hosting layout differs.
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-172.28.0.1}
+    volumes:
+      - garmin-tokens:/data/tokens
+      - garmin-auth:/data/auth
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  garmin-tokens:
+    name: garmin-mcp-tokens
+  garmin-auth:
+    name: garmin-mcp-auth
+
+networks:
+  default:
+    name: garmin-mcp-net
+    ipam:
+      config:
+        # Pinned so the gateway (172.28.0.1) is deterministic for
+        # TRUSTED_PROXY above.
+        - subnet: 172.28.0.0/24

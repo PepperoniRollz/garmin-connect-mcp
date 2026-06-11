@@ -7,3 +7,4 @@ dist/
 *.db-shm
 .playwright-mcp/
 garmin-mcp-phase4-facts.md
+deploy/NOTES.md

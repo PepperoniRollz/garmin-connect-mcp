@@ -21,6 +21,16 @@ export interface HttpConfig {
   serverOwnerPasswordHash: string;
   /** SQLite file persisting OAuth clients, codes, and tokens. */
   authDbPath: string;
+  /**
+   * Express trust-proxy setting: 'loopback', an IP, a CIDR, or a
+   * comma-separated list of those.
+   */
+  trustedProxy: string | string[];
+  /**
+   * Interface the HTTP server binds to. Loopback by default; inside a
+   * container set 0.0.0.0 (the port publish controls outside exposure).
+   */
+  bindHost: string;
 }
 
 export interface AppConfig {
@@ -159,13 +169,40 @@ function resolveAuthDbPath(env: Env, issues: string[]): string {
   return path.resolve(parsed.data);
 }
 
+function resolveTrustedProxy(env: Env, issues: string[]): string | string[] {
+  const raw = env[EnvVar.TrustedProxy];
+  if (raw === undefined) return DEFAULTS.trustedProxy;
+
+  const parsed = nonEmptyStringSchema.safeParse(raw);
+  if (!parsed.success) {
+    issues.push(`${EnvVar.TrustedProxy}: must not be empty when set`);
+    return DEFAULTS.trustedProxy;
+  }
+  const values = parsed.data.split(',').map((value) => value.trim()).filter((value) => value !== '');
+  return values.length === 1 ? values[0] : values;
+}
+
+function resolveBindHost(env: Env, issues: string[]): string {
+  const raw = env[EnvVar.BindHost];
+  if (raw === undefined) return DEFAULTS.host;
+
+  const parsed = nonEmptyStringSchema.safeParse(raw);
+  if (!parsed.success) {
+    issues.push(`${EnvVar.BindHost}: must not be empty when set`);
+    return DEFAULTS.host;
+  }
+  return parsed.data;
+}
+
 function resolveHttpConfig(env: Env, issues: string[]): HttpConfig | undefined {
   checkHttpCredentials(env, issues);
   const publicUrl = resolvePublicUrl(env, issues);
   const serverOwnerPasswordHash = resolveOwnerPasswordHash(env, issues);
   const authDbPath = resolveAuthDbPath(env, issues);
+  const trustedProxy = resolveTrustedProxy(env, issues);
+  const bindHost = resolveBindHost(env, issues);
   if (publicUrl === undefined || serverOwnerPasswordHash === undefined) return undefined;
-  return {publicUrl, serverOwnerPasswordHash, authDbPath};
+  return {publicUrl, serverOwnerPasswordHash, authDbPath, trustedProxy, bindHost};
 }
 
 /**

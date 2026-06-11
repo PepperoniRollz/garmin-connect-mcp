@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.env
+*.db
+*.db-wal
+*.db-shm
+.playwright-mcp
+garmin-mcp-phase4-facts.md
+docs
+scripts
+*.md
