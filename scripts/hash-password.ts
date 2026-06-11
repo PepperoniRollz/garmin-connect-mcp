@@ -22,9 +22,13 @@ function hiddenQuestion(prompt: string): Promise<string> {
       callback();
     },
   });
-  const rl: Interface = createInterface({input: process.stdin, output: mutedStdout, terminal: true});
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
+  const rl: Interface = createInterface({
+    input: process.stdin,
+    output: mutedStdout,
+    terminal: true,
+  });
+  return new Promise(resolve => {
+    rl.question(prompt, answer => {
       muted = false;
       process.stdout.write('\n');
       rl.close();
@@ -62,7 +66,9 @@ async function main(): Promise<void> {
 
   const hash = bcrypt.hashSync(password, BCRYPT_COST);
   console.log(`\n${ENV_VAR_NAME}='${hash}'`);
-  console.log('\nAdd the line above to your server environment (quote it — bcrypt hashes contain "$").');
+  console.log(
+    '\nAdd the line above to your server environment (quote it — bcrypt hashes contain "$").',
+  );
 }
 
 await main();

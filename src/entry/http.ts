@@ -17,7 +17,10 @@
 import {randomUUID} from 'node:crypto';
 
 import {requireBearerAuth} from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
-import {getOAuthProtectedResourceMetadataUrl, mcpAuthRouter} from '@modelcontextprotocol/sdk/server/auth/router.js';
+import {
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthRouter,
+} from '@modelcontextprotocol/sdk/server/auth/router.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
 import express, {NextFunction, Request, Response} from 'express';
@@ -26,7 +29,6 @@ import {rateLimit} from 'express-rate-limit';
 import {AppConfig, HttpConfig} from '../config.js';
 import {
   AuditEvent,
-  DEFAULTS,
   HeaderName,
   JSON_RPC_VERSION,
   JsonRpcErrorCode,
@@ -50,7 +52,12 @@ interface SessionEntry {
   lastActivityMs: number;
 }
 
-function jsonRpcError(res: Response, status: number, code: JsonRpcErrorCode, message: string): void {
+function jsonRpcError(
+  res: Response,
+  status: number,
+  code: JsonRpcErrorCode,
+  message: string,
+): void {
   res.status(status).json({
     jsonrpc: JSON_RPC_VERSION,
     error: {code, message},
@@ -64,10 +71,18 @@ function getSessionId(req: Request): string | undefined {
 }
 
 /** Audits authentication outcomes on the MCP endpoint (401s only). */
-function auditUnauthorized(req: Request, res: Response, next: NextFunction): void {
+function auditUnauthorized(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   res.on('finish', () => {
     if (res.statusCode === 401) {
-      logger.info('audit', {event: AuditEvent.McpUnauthorized, ip: req.ip, method: req.method});
+      logger.info('audit', {
+        event: AuditEvent.McpUnauthorized,
+        ip: req.ip,
+        method: req.method,
+      });
     }
   });
   next();
@@ -76,7 +91,9 @@ function auditUnauthorized(req: Request, res: Response, next: NextFunction): voi
 export async function runHttp(config: AppConfig): Promise<void> {
   const httpConfig: HttpConfig | undefined = config.http;
   if (httpConfig === undefined) {
-    throw new Error('runHttp called without http config; loadConfig should have failed first');
+    throw new Error(
+      'runHttp called without http config; loadConfig should have failed first',
+    );
   }
 
   configureGarminClient({
@@ -87,7 +104,9 @@ export async function runHttp(config: AppConfig): Promise<void> {
   const db = new AuthDb(httpConfig.authDbPath);
   const provider = new OwnerAuthorizationProvider(db);
   const issuerUrl = new URL(httpConfig.publicUrl.origin);
-  const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(httpConfig.publicUrl);
+  const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(
+    httpConfig.publicUrl,
+  );
 
   const app = express();
   app.set('trust proxy', httpConfig.trustedProxy);
@@ -100,13 +119,15 @@ export async function runHttp(config: AppConfig): Promise<void> {
 
   // OAuth authorization server: /authorize, /token, /register, /revoke and
   // RFC 8414 + RFC 9728 discovery metadata (SDK applies its own rate limits).
-  app.use(mcpAuthRouter({
-    provider,
-    issuerUrl,
-    resourceServerUrl: httpConfig.publicUrl,
-    resourceName: SERVER_INFO.name,
-    scopesSupported: [...OAUTH.scopesSupported],
-  }));
+  app.use(
+    mcpAuthRouter({
+      provider,
+      issuerUrl,
+      resourceServerUrl: httpConfig.publicUrl,
+      resourceName: SERVER_INFO.name,
+      scopesSupported: [...OAUTH.scopesSupported],
+    }),
+  );
   app.use(createLoginRouter(provider, httpConfig.serverOwnerPasswordHash));
 
   const mcpRateLimit = rateLimit({
@@ -115,7 +136,10 @@ export async function runHttp(config: AppConfig): Promise<void> {
     standardHeaders: true,
     legacyHeaders: false,
   });
-  const bearerAuth = requireBearerAuth({verifier: provider, resourceMetadataUrl});
+  const bearerAuth = requireBearerAuth({
+    verifier: provider,
+    resourceMetadataUrl,
+  });
   app.use(RoutePath.Mcp, mcpRateLimit, auditUnauthorized, bearerAuth);
 
   /** Active transports keyed by session id. */
@@ -135,23 +159,37 @@ export async function runHttp(config: AppConfig): Promise<void> {
     let entry = sessionId !== undefined ? touchSession(sessionId) : undefined;
     if (entry === undefined) {
       if (sessionId !== undefined) {
-        jsonRpcError(res, 404, JsonRpcErrorCode.SessionNotFound, 'Session not found');
+        jsonRpcError(
+          res,
+          404,
+          JsonRpcErrorCode.SessionNotFound,
+          'Session not found',
+        );
         return;
       }
       if (!isInitializeRequest(req.body)) {
         jsonRpcError(
-            res, 400, JsonRpcErrorCode.InvalidRequest,
-            'Bad request: no session ID and not an initialize request');
+          res,
+          400,
+          JsonRpcErrorCode.InvalidRequest,
+          'Bad request: no session ID and not an initialize request',
+        );
         return;
       }
 
       const newTransport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sid) => {
-          sessions.set(sid, {transport: newTransport, lastActivityMs: Date.now()});
-          logger.info('mcp session initialized', {sessionId: sid, clientId: req.auth?.clientId});
+        onsessioninitialized: sid => {
+          sessions.set(sid, {
+            transport: newTransport,
+            lastActivityMs: Date.now(),
+          });
+          logger.info('mcp session initialized', {
+            sessionId: sid,
+            clientId: req.auth?.clientId,
+          });
         },
-        onsessionclosed: (sid) => {
+        onsessionclosed: sid => {
           sessions.delete(sid);
           logger.info('mcp session closed', {sessionId: sid});
         },
@@ -174,7 +212,12 @@ export async function runHttp(config: AppConfig): Promise<void> {
     const sessionId = getSessionId(req);
     const entry = sessionId !== undefined ? touchSession(sessionId) : undefined;
     if (entry === undefined) {
-      jsonRpcError(res, 404, JsonRpcErrorCode.SessionNotFound, 'Session not found');
+      jsonRpcError(
+        res,
+        404,
+        JsonRpcErrorCode.SessionNotFound,
+        'Session not found',
+      );
       return;
     }
     await entry.transport.handleRequest(req, res);
@@ -194,7 +237,10 @@ export async function runHttp(config: AppConfig): Promise<void> {
         logger.info('mcp session reaped (idle)', {sessionId});
         sessions.delete(sessionId);
         void entry.transport.close().catch((err: unknown) => {
-          logger.warn('error closing idle session', {sessionId, error: String(err)});
+          logger.warn('error closing idle session', {
+            sessionId,
+            error: String(err),
+          });
         });
       }
     }

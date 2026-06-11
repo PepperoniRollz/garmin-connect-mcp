@@ -9,7 +9,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "hash-password": "tsx scripts/hash-password.ts"
+    "hash-password": "tsx scripts/hash-password.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
+    "lint": "gts lint",
+    "fix": "gts fix",
+    "test": "tsx scripts/run-e2e.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -22,6 +26,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.3.5",
+    "gts": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

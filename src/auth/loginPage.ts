@@ -19,18 +19,22 @@ export interface LoginPageOptions {
 
 function escapeHtml(value: string): string {
   return value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll('\'', '&#39;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 export function renderLoginPage(options: LoginPageOptions): string {
-  const client = options.clientName !== undefined ? escapeHtml(options.clientName) : 'An MCP client';
-  const error = options.errorMessage !== undefined ?
-      `<p class="error">${escapeHtml(options.errorMessage)}</p>` :
-      '';
+  const client =
+    options.clientName !== undefined
+      ? escapeHtml(options.clientName)
+      : 'An MCP client';
+  const error =
+    options.errorMessage !== undefined
+      ? `<p class="error">${escapeHtml(options.errorMessage)}</p>`
+      : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

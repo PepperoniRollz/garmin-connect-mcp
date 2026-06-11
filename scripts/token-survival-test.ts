@@ -19,7 +19,9 @@ if (tokenFile === undefined) {
   process.exit(1);
 }
 const baseUrl = process.argv[3] ?? DEFAULT_BASE_URL;
-const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8')) as {access_token: string};
+const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8')) as {
+  access_token: string;
+};
 const mcpUrl = new URL(MCP_PATH, baseUrl);
 
 const transport = new StreamableHTTPClientTransport(mcpUrl, {
@@ -32,7 +34,9 @@ await transport.terminateSession();
 await client.close();
 
 if (tools.length === 13) {
-  console.log('PASS  pre-restart access token works after restart — 13 tools listed');
+  console.log(
+    'PASS  pre-restart access token works after restart — 13 tools listed',
+  );
   process.exit(0);
 }
 console.log(`FAIL  expected 13 tools, got ${tools.length}`);

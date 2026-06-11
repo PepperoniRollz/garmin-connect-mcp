@@ -14,7 +14,9 @@ try {
   config = loadConfig();
 } catch (err) {
   if (err instanceof ConfigError) {
-    logger.error('invalid configuration; fix the following and restart', {issues: err.issues});
+    logger.error('invalid configuration; fix the following and restart', {
+      issues: err.issues,
+    });
     process.exit(1);
   }
   throw err;

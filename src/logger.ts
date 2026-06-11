@@ -27,7 +27,11 @@ function configuredLevel(): LogLevel {
   return raw !== undefined && isLogLevel(raw) ? raw : LogLevel.Info;
 }
 
-function write(level: LogLevel, message: string, fields?: Record<string, unknown>): void {
+function write(
+  level: LogLevel,
+  message: string,
+  fields?: Record<string, unknown>,
+): void {
   if (LEVEL_ORDER[level] < LEVEL_ORDER[configuredLevel()]) {
     return;
   }
@@ -41,8 +45,12 @@ function write(level: LogLevel, message: string, fields?: Record<string, unknown
 }
 
 export const logger = {
-  debug: (message: string, fields?: Record<string, unknown>) => write(LogLevel.Debug, message, fields),
-  info: (message: string, fields?: Record<string, unknown>) => write(LogLevel.Info, message, fields),
-  warn: (message: string, fields?: Record<string, unknown>) => write(LogLevel.Warn, message, fields),
-  error: (message: string, fields?: Record<string, unknown>) => write(LogLevel.Error, message, fields),
+  debug: (message: string, fields?: Record<string, unknown>) =>
+    write(LogLevel.Debug, message, fields),
+  info: (message: string, fields?: Record<string, unknown>) =>
+    write(LogLevel.Info, message, fields),
+  warn: (message: string, fields?: Record<string, unknown>) =>
+    write(LogLevel.Warn, message, fields),
+  error: (message: string, fields?: Record<string, unknown>) =>
+    write(LogLevel.Error, message, fields),
 };

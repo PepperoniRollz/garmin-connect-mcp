@@ -35,7 +35,9 @@ export class EnvCredentialProvider implements CredentialProvider {
     const username = process.env[EnvVar.GarminUsername];
     const password = process.env[EnvVar.GarminPassword];
     if (!username || !password) {
-      throw new Error(`${EnvVar.GarminUsername} and ${EnvVar.GarminPassword} must both be set`);
+      throw new Error(
+        `${EnvVar.GarminUsername} and ${EnvVar.GarminPassword} must both be set`,
+      );
     }
     return {username, password};
   }
@@ -53,7 +55,9 @@ export class KeyringCredentialProvider implements CredentialProvider {
       ]);
       return {username, password};
     } catch {
-      throw new Error(`Garmin credentials not found in the ${this.source}. ${keyringHelpText()}`);
+      throw new Error(
+        `Garmin credentials not found in the ${this.source}. ${keyringHelpText()}`,
+      );
     }
   }
 
@@ -64,8 +68,10 @@ export class KeyringCredentialProvider implements CredentialProvider {
       // macOS Keychain
       const {stdout} = await execFileAsync('security', [
         'find-generic-password',
-        '-s', CREDENTIAL_SERVICE,
-        '-a', account,
+        '-s',
+        CREDENTIAL_SERVICE,
+        '-a',
+        account,
         '-w',
       ]);
       return stdout.trim();
@@ -78,7 +84,9 @@ export class KeyringCredentialProvider implements CredentialProvider {
       const script = `(Get-StoredCredential -Target '${target.replace(/'/g, "''")}').GetNetworkCredential().Password`;
       const encoded = Buffer.from(script, 'utf16le').toString('base64');
       const {stdout} = await execFileAsync('powershell', [
-        '-NoProfile', '-EncodedCommand', encoded,
+        '-NoProfile',
+        '-EncodedCommand',
+        encoded,
       ]);
       const result = stdout.trim();
       if (!result) throw new Error(`No credential found for target: ${target}`);
@@ -88,13 +96,18 @@ export class KeyringCredentialProvider implements CredentialProvider {
     if (platform === 'linux') {
       // Linux libsecret (GNOME Keyring / KDE Wallet via secret-tool)
       const {stdout} = await execFileAsync('secret-tool', [
-        'lookup', 'service', CREDENTIAL_SERVICE, 'account', account,
+        'lookup',
+        'service',
+        CREDENTIAL_SERVICE,
+        'account',
+        account,
       ]);
       return stdout.trim();
     }
 
     throw new Error(
-        `Unsupported platform: ${platform}. Use ${EnvVar.GarminUsername} and ${EnvVar.GarminPassword} env vars instead.`);
+      `Unsupported platform: ${platform}. Use ${EnvVar.GarminUsername} and ${EnvVar.GarminPassword} env vars instead.`,
+    );
   }
 }
 
@@ -103,7 +116,7 @@ export class ChainedCredentialProvider implements CredentialProvider {
   readonly source: string;
 
   constructor(private readonly providers: readonly CredentialProvider[]) {
-    this.source = providers.map((provider) => provider.source).join(', then ');
+    this.source = providers.map(provider => provider.source).join(', then ');
   }
 
   async getCredentials(): Promise<GarminCredentials> {
@@ -114,15 +127,21 @@ export class ChainedCredentialProvider implements CredentialProvider {
         logger.debug('credentials resolved', {source: provider.source});
         return credentials;
       } catch (err) {
-        failures.push(`${provider.source}: ${err instanceof Error ? err.message : String(err)}`);
+        failures.push(
+          `${provider.source}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
-    throw new Error(`Garmin credentials not found. Tried:\n${failures.map((failure) => `  - ${failure}`).join('\n')}`);
+    throw new Error(
+      `Garmin credentials not found. Tried:\n${failures.map(failure => `  - ${failure}`).join('\n')}`,
+    );
   }
 }
 
 /** Returns the default provider chain for the given transport mode. */
-export function createCredentialProvider(mode: TransportMode): CredentialProvider {
+export function createCredentialProvider(
+  mode: TransportMode,
+): CredentialProvider {
   if (mode === TransportMode.Http) {
     return new EnvCredentialProvider();
   }

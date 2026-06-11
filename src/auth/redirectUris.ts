@@ -19,6 +19,10 @@ export function isAllowedRedirectUri(uri: string): boolean {
 
   // RFC 8252 §7.3: loopback redirects may use any port (and, here, any
   // path — they only ever reach the user's own machine).
-  return url.protocol === ALLOWED_REDIRECTS.loopbackProtocol &&
-      (ALLOWED_REDIRECTS.loopbackHosts as readonly string[]).includes(url.hostname);
+  return (
+    url.protocol === ALLOWED_REDIRECTS.loopbackProtocol &&
+    (ALLOWED_REDIRECTS.loopbackHosts as readonly string[]).includes(
+      url.hostname,
+    )
+  );
 }

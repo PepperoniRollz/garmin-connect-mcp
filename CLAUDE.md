@@ -34,8 +34,11 @@ dist/               — Compiled JS output
 - `npm run build` — Compile TypeScript to `dist/`
 - `npm run dev` — Run directly with tsx (for development)
 - `npm start` — Run compiled output (stdio mode by default)
+- `npm run typecheck` — `tsc --noEmit` over src and scripts
+- `npm run lint` / `npm run fix` — gts (Google TS style; prettier single-quote config in `.prettierrc.cjs`)
+- `npm test` — e2e orchestrator: HTTP server with synthetic creds + OAuth flow + session lifecycle suites (no Garmin account needed)
+- `npm run hash-password` — generate SERVER_OWNER_PASSWORD_HASH
 - `npx @modelcontextprotocol/inspector` — Debug/test tools interactively
-- `npx tsx scripts/http-session-test.ts` — HTTP session lifecycle acceptance test
 
 ## Architecture
 - **Transport modes**: `--transport` CLI flag or `TRANSPORT_MODE` env var (`stdio` | `http`); default stdio. HTTP mode binds to `127.0.0.1` only and expects a TLS-terminating reverse proxy in front.

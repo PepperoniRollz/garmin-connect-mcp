@@ -116,31 +116,51 @@ export class AuthDb {
   // --- Clients ---
 
   getClient(clientId: string): OAuthClientInformationFull | undefined {
-    const row = this.db.prepare('SELECT data FROM clients WHERE client_id = ?').get(clientId) as
-        {data: string} | undefined;
-    return row === undefined ? undefined : JSON.parse(row.data) as OAuthClientInformationFull;
+    const row = this.db
+      .prepare('SELECT data FROM clients WHERE client_id = ?')
+      .get(clientId) as {data: string} | undefined;
+    return row === undefined
+      ? undefined
+      : (JSON.parse(row.data) as OAuthClientInformationFull);
   }
 
   putClient(client: OAuthClientInformationFull): void {
-    this.db.prepare('INSERT OR REPLACE INTO clients (client_id, data, created_at) VALUES (?, ?, ?)')
-        .run(client.client_id, JSON.stringify(client), nowSeconds());
+    this.db
+      .prepare(
+        'INSERT OR REPLACE INTO clients (client_id, data, created_at) VALUES (?, ?, ?)',
+      )
+      .run(client.client_id, JSON.stringify(client), nowSeconds());
   }
 
   // --- Pending authorizations (login page shown, password not yet checked) ---
 
   createPendingAuthorization(pending: PendingAuthorization): void {
-    this.db.prepare(
+    this.db
+      .prepare(
         `INSERT INTO pending_authorizations
          (id, client_id, code_challenge, redirect_uri, scopes, state, resource, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(pending.id, pending.clientId, pending.codeChallenge, pending.redirectUri,
-            serializeScopes(pending.scopes), pending.state ?? null, pending.resource ?? null,
-            pending.expiresAt);
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        pending.id,
+        pending.clientId,
+        pending.codeChallenge,
+        pending.redirectUri,
+        serializeScopes(pending.scopes),
+        pending.state ?? null,
+        pending.resource ?? null,
+        pending.expiresAt,
+      );
   }
 
   getPendingAuthorization(id: string): PendingAuthorization | undefined {
-    const row = this.db.prepare('SELECT * FROM pending_authorizations WHERE id = ? AND expires_at > ?')
-        .get(id, nowSeconds()) as Record<string, string | number | null> | undefined;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM pending_authorizations WHERE id = ? AND expires_at > ?',
+      )
+      .get(id, nowSeconds()) as
+      | Record<string, string | number | null>
+      | undefined;
     if (row === undefined) return undefined;
     return {
       id: row['id'] as string,
@@ -161,17 +181,31 @@ export class AuthDb {
   // --- Authorization codes ---
 
   createAuthorizationCode(code: string, record: AuthorizationCodeRecord): void {
-    this.db.prepare(
+    this.db
+      .prepare(
         `INSERT INTO authorization_codes
          (code_hash, client_id, code_challenge, redirect_uri, scopes, resource, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(sha256Hex(code), record.clientId, record.codeChallenge, record.redirectUri,
-            serializeScopes(record.scopes), record.resource ?? null, record.expiresAt);
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sha256Hex(code),
+        record.clientId,
+        record.codeChallenge,
+        record.redirectUri,
+        serializeScopes(record.scopes),
+        record.resource ?? null,
+        record.expiresAt,
+      );
   }
 
   getAuthorizationCode(code: string): AuthorizationCodeRecord | undefined {
-    const row = this.db.prepare('SELECT * FROM authorization_codes WHERE code_hash = ? AND expires_at > ?')
-        .get(sha256Hex(code), nowSeconds()) as Record<string, string | number | null> | undefined;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM authorization_codes WHERE code_hash = ? AND expires_at > ?',
+      )
+      .get(sha256Hex(code), nowSeconds()) as
+      | Record<string, string | number | null>
+      | undefined;
     if (row === undefined) return undefined;
     return {
       clientId: row['client_id'] as string,
@@ -184,22 +218,38 @@ export class AuthDb {
   }
 
   deleteAuthorizationCode(code: string): void {
-    this.db.prepare('DELETE FROM authorization_codes WHERE code_hash = ?').run(sha256Hex(code));
+    this.db
+      .prepare('DELETE FROM authorization_codes WHERE code_hash = ?')
+      .run(sha256Hex(code));
   }
 
   // --- Access / refresh tokens ---
 
   insertToken(token: string, record: TokenRecord): void {
-    this.db.prepare(
+    this.db
+      .prepare(
         `INSERT INTO tokens (token_hash, kind, client_id, scopes, resource, expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(sha256Hex(token), record.kind, record.clientId, serializeScopes(record.scopes),
-            record.resource ?? null, record.expiresAt, nowSeconds());
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sha256Hex(token),
+        record.kind,
+        record.clientId,
+        serializeScopes(record.scopes),
+        record.resource ?? null,
+        record.expiresAt,
+        nowSeconds(),
+      );
   }
 
   getToken(token: string, kind: TokenKind): TokenRecord | undefined {
-    const row = this.db.prepare('SELECT * FROM tokens WHERE token_hash = ? AND kind = ? AND expires_at > ?')
-        .get(sha256Hex(token), kind, nowSeconds()) as Record<string, string | number | null> | undefined;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM tokens WHERE token_hash = ? AND kind = ? AND expires_at > ?',
+      )
+      .get(sha256Hex(token), kind, nowSeconds()) as
+      | Record<string, string | number | null>
+      | undefined;
     if (row === undefined) return undefined;
     return {
       kind: row['kind'] as TokenKind,
@@ -211,7 +261,9 @@ export class AuthDb {
   }
 
   deleteToken(token: string): void {
-    this.db.prepare('DELETE FROM tokens WHERE token_hash = ?').run(sha256Hex(token));
+    this.db
+      .prepare('DELETE FROM tokens WHERE token_hash = ?')
+      .run(sha256Hex(token));
   }
 
   deleteTokensForClient(clientId: string): void {
@@ -222,8 +274,14 @@ export class AuthDb {
   deleteExpired(): number {
     const now = nowSeconds();
     let deleted = 0;
-    for (const table of ['pending_authorizations', 'authorization_codes', 'tokens']) {
-      const result = this.db.prepare(`DELETE FROM ${table} WHERE expires_at <= ?`).run(now);
+    for (const table of [
+      'pending_authorizations',
+      'authorization_codes',
+      'tokens',
+    ]) {
+      const result = this.db
+        .prepare(`DELETE FROM ${table} WHERE expires_at <= ?`)
+        .run(now);
       deleted += Number(result.changes);
     }
     return deleted;

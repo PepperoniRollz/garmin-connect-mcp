@@ -8,3 +8,6 @@ dist/
 .playwright-mcp/
 garmin-mcp-phase4-facts.md
 deploy/NOTES.md
+.garmin-mcp-tokens/
+oauth1_token.json
+oauth2_token.json

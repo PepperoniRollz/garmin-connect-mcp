@@ -28,10 +28,12 @@ export function configureGarminClient(config: GarminClientConfig): void {
 
 export function getClient(): Promise<GarminClient> {
   if (!clientConfig) {
-    throw new Error('Garmin client not configured: configureGarminClient() must be called at startup');
+    throw new Error(
+      'Garmin client not configured: configureGarminClient() must be called at startup',
+    );
   }
   if (!clientPromise) {
-    clientPromise = initClient(clientConfig).catch((err) => {
+    clientPromise = initClient(clientConfig).catch(err => {
       clientPromise = null; // allow retry on failure
       throw err;
     });
@@ -47,12 +49,16 @@ async function initClient(config: GarminClientConfig): Promise<GarminClient> {
   try {
     gc.loadTokenByFile(config.tokenCacheDir);
     await gc.getUserProfile();
-    logger.debug('garmin token cache hit', {tokenCacheDir: config.tokenCacheDir});
+    logger.debug('garmin token cache hit', {
+      tokenCacheDir: config.tokenCacheDir,
+    });
   } catch {
     // Token expired or missing, do a fresh login
     await gc.login();
     gc.exportTokenToFile(config.tokenCacheDir);
-    logger.info('garmin fresh login; token cache written', {tokenCacheDir: config.tokenCacheDir});
+    logger.info('garmin fresh login; token cache written', {
+      tokenCacheDir: config.tokenCacheDir,
+    });
   }
 
   return gc;

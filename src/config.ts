@@ -10,7 +10,16 @@ import path from 'path';
 
 import {z} from 'zod';
 
-import {AUTH_DB_FILE_NAME, CliFlag, DEFAULTS, EnvVar, OAUTH, RoutePath, TOKEN_DIR_NAME, TransportMode} from './constants.js';
+import {
+  AUTH_DB_FILE_NAME,
+  CliFlag,
+  DEFAULTS,
+  EnvVar,
+  OAUTH,
+  RoutePath,
+  TOKEN_DIR_NAME,
+  TransportMode,
+} from './constants.js';
 import {LogLevel} from './logger.js';
 
 /** Settings that only exist in HTTP (remote connector) mode. */
@@ -46,7 +55,9 @@ export interface AppConfig {
 /** Thrown when configuration is invalid; carries one entry per problem. */
 export class ConfigError extends Error {
   constructor(readonly issues: string[]) {
-    super(`Invalid configuration:\n${issues.map((issue) => `  - ${issue}`).join('\n')}`);
+    super(
+      `Invalid configuration:\n${issues.map(issue => `  - ${issue}`).join('\n')}`,
+    );
     this.name = 'ConfigError';
   }
 }
@@ -58,10 +69,15 @@ const nonEmptyStringSchema = z.string().min(1);
 
 type Env = Record<string, string | undefined>;
 
-function resolveTransportMode(env: Env, argv: readonly string[], issues: string[]): TransportMode {
+function resolveTransportMode(
+  env: Env,
+  argv: readonly string[],
+  issues: string[],
+): TransportMode {
   const flagIndex = argv.indexOf(CliFlag.Transport);
   const fromFlag = flagIndex !== -1 ? argv[flagIndex + 1] : undefined;
-  const source = fromFlag !== undefined ? CliFlag.Transport : EnvVar.TransportMode;
+  const source =
+    fromFlag !== undefined ? CliFlag.Transport : EnvVar.TransportMode;
   const raw = fromFlag ?? env[EnvVar.TransportMode];
   if (raw === undefined) return DEFAULTS.transportMode;
 
@@ -80,7 +96,9 @@ function resolvePort(env: Env, issues: string[]): number {
 
   const parsed = portSchema.safeParse(raw);
   if (!parsed.success) {
-    issues.push(`${EnvVar.Port}: invalid value "${raw}" (must be an integer between 1 and 65535)`);
+    issues.push(
+      `${EnvVar.Port}: invalid value "${raw}" (must be an integer between 1 and 65535)`,
+    );
     return DEFAULTS.port;
   }
   return parsed.data;
@@ -113,7 +131,9 @@ function checkHttpCredentials(env: Env, issues: string[]): void {
   for (const name of [EnvVar.GarminUsername, EnvVar.GarminPassword]) {
     const parsed = nonEmptyStringSchema.safeParse(env[name]);
     if (!parsed.success) {
-      issues.push(`${name}: required in http mode (env vars are the canonical credential source for remote deployments)`);
+      issues.push(
+        `${name}: required in http mode (env vars are the canonical credential source for remote deployments)`,
+      );
     }
   }
 }
@@ -121,7 +141,9 @@ function checkHttpCredentials(env: Env, issues: string[]): void {
 function resolvePublicUrl(env: Env, issues: string[]): URL | undefined {
   const raw = env[EnvVar.PublicUrl];
   if (raw === undefined || raw === '') {
-    issues.push(`${EnvVar.PublicUrl}: required in http mode (full public MCP endpoint URL, e.g. https://garmin-mcp.example.com${RoutePath.Mcp})`);
+    issues.push(
+      `${EnvVar.PublicUrl}: required in http mode (full public MCP endpoint URL, e.g. https://garmin-mcp.example.com${RoutePath.Mcp})`,
+    );
     return undefined;
   }
 
@@ -138,20 +160,29 @@ function resolvePublicUrl(env: Env, issues: string[]): URL | undefined {
     return undefined;
   }
   if (url.pathname !== RoutePath.Mcp || url.search !== '' || url.hash !== '') {
-    issues.push(`${EnvVar.PublicUrl}: path must be exactly "${RoutePath.Mcp}" with no query or fragment (the OAuth resource identifier must match the MCP endpoint URL exactly), got "${raw}"`);
+    issues.push(
+      `${EnvVar.PublicUrl}: path must be exactly "${RoutePath.Mcp}" with no query or fragment (the OAuth resource identifier must match the MCP endpoint URL exactly), got "${raw}"`,
+    );
     return undefined;
   }
   return url;
 }
 
-function resolveOwnerPasswordHash(env: Env, issues: string[]): string | undefined {
+function resolveOwnerPasswordHash(
+  env: Env,
+  issues: string[],
+): string | undefined {
   const raw = env[EnvVar.ServerOwnerPasswordHash];
   if (raw === undefined || raw === '') {
-    issues.push(`${EnvVar.ServerOwnerPasswordHash}: required in http mode (generate with: npm run hash-password)`);
+    issues.push(
+      `${EnvVar.ServerOwnerPasswordHash}: required in http mode (generate with: npm run hash-password)`,
+    );
     return undefined;
   }
   if (!OAUTH.bcryptHashPattern.test(raw)) {
-    issues.push(`${EnvVar.ServerOwnerPasswordHash}: not a bcrypt hash (expected $2a$/$2b$/$2y$ prefix; generate with: npm run hash-password)`);
+    issues.push(
+      `${EnvVar.ServerOwnerPasswordHash}: not a bcrypt hash (expected $2a$/$2b$/$2y$ prefix; generate with: npm run hash-password)`,
+    );
     return undefined;
   }
   return raw;
@@ -178,7 +209,10 @@ function resolveTrustedProxy(env: Env, issues: string[]): string | string[] {
     issues.push(`${EnvVar.TrustedProxy}: must not be empty when set`);
     return DEFAULTS.trustedProxy;
   }
-  const values = parsed.data.split(',').map((value) => value.trim()).filter((value) => value !== '');
+  const values = parsed.data
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => value !== '');
   return values.length === 1 ? values[0] : values;
 }
 
@@ -201,8 +235,15 @@ function resolveHttpConfig(env: Env, issues: string[]): HttpConfig | undefined {
   const authDbPath = resolveAuthDbPath(env, issues);
   const trustedProxy = resolveTrustedProxy(env, issues);
   const bindHost = resolveBindHost(env, issues);
-  if (publicUrl === undefined || serverOwnerPasswordHash === undefined) return undefined;
-  return {publicUrl, serverOwnerPasswordHash, authDbPath, trustedProxy, bindHost};
+  if (publicUrl === undefined || serverOwnerPasswordHash === undefined)
+    return undefined;
+  return {
+    publicUrl,
+    serverOwnerPasswordHash,
+    authDbPath,
+    trustedProxy,
+    bindHost,
+  };
 }
 
 /**
@@ -210,14 +251,20 @@ function resolveHttpConfig(env: Env, issues: string[]): HttpConfig | undefined {
  *
  * @throws ConfigError listing every missing or invalid variable.
  */
-export function loadConfig(env: Env = process.env, argv: readonly string[] = process.argv): AppConfig {
+export function loadConfig(
+  env: Env = process.env,
+  argv: readonly string[] = process.argv,
+): AppConfig {
   const issues: string[] = [];
 
   const transportMode = resolveTransportMode(env, argv, issues);
   const port = resolvePort(env, issues);
   const tokenCacheDir = resolveTokenCacheDir(env, issues);
   checkLogLevel(env, issues);
-  const http = transportMode === TransportMode.Http ? resolveHttpConfig(env, issues) : undefined;
+  const http =
+    transportMode === TransportMode.Http
+      ? resolveHttpConfig(env, issues)
+      : undefined;
 
   if (issues.length > 0) {
     throw new ConfigError(issues);
