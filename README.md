@@ -24,7 +24,7 @@ night for sleep tools).
 | `get-activities` | Recent activities (pagination, type filter) | |
 | `get-activity-details` | One activity by ID | |
 | `count-activities` | Activity counts by type | |
-| `get-daily-summary` | Total / active / resting (BMR) calories, steps, distance, intensity minutes, HR range, stress, Body Battery | Calories are **kilocalories** (dietary Calories); `totalKilocalories = activeKilocalories + bmrKilocalories`. Totals keep accruing until the day ends and the device syncs |
+| `get-daily-summary` | Total / active / resting (BMR) calories burned, calories consumed + goal + remaining, steps, distance, intensity minutes, HR range, stress, Body Battery | Calories are **kilocalories** (dietary Calories); `totalKilocalories = activeKilocalories + bmrKilocalories`. `consumedKilocalories` syncs from MyFitnessPal (`includesCalorieConsumedData` flags whether intake was logged); `remainingKilocalories = netCalorieGoal − consumed + activeKilocalories` (activity is credited back). **Macro grams (protein/carb/fat) are not in this payload** — MFP doesn't propagate them. Totals keep accruing until the day ends and the device syncs |
 | `get-steps` | Step count for a date | Can lag `get-daily-summary.totalSteps` until the next device sync |
 | `get-heart-rate` | Heart rate series + summary for a date | |
 | `get-sleep` | Condensed sleep: duration, deep/light/REM/awake stages, score, overnight HRV, RHR, Body Battery change | All durations in **seconds**. `date` = the morning the sleep ended |

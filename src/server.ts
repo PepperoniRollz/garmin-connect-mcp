@@ -15,12 +15,22 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Fields picked from the daily-summary payload (91 keys total; the rest are
  * goal/internal bookkeeping). Calories are kilocalories (dietary Calories).
+ *
+ * Nutrition: consumedKilocalories syncs from MyFitnessPal;
+ * includesCalorieConsumedData flags whether intake was logged that day.
+ * remainingKilocalories = netCalorieGoal - consumed + activeKilocalories
+ * (Garmin credits activity back against the goal). Macro grams are NOT in
+ * this payload — MFP does not propagate them to Garmin.
  */
 const DAILY_SUMMARY_FIELDS = [
   'calendarDate',
   'totalKilocalories',
   'activeKilocalories',
   'bmrKilocalories',
+  'consumedKilocalories',
+  'netCalorieGoal',
+  'remainingKilocalories',
+  'includesCalorieConsumedData',
   'totalSteps',
   'totalDistanceMeters',
   'moderateIntensityMinutes',
@@ -304,7 +314,7 @@ export function createServer(): McpServer {
     ToolName.GetDailySummary,
     {
       description:
-        'Get the daily wellness summary: total, active, and resting (BMR) calories burned, steps, distance, intensity minutes, heart rate range, stress, Body Battery, and sleep seconds',
+        'Get the daily wellness summary: total, active, and resting (BMR) calories burned, calories consumed (synced from MyFitnessPal) with goal and remaining, steps, distance, intensity minutes, heart rate range, stress, Body Battery, and sleep seconds',
       inputSchema: {
         date: z
           .string()
