@@ -7,14 +7,12 @@
  * so every stepId is sent null; stepOrder increments globally across
  * nesting (a repeat group and its children share the running counter).
  */
-import {
-  LIFT_EXERCISES,
-  LiftExerciseKey,
-  STRENGTH_WORKOUT,
-} from './constants.js';
+import {STRENGTH_WORKOUT} from './constants.js';
 
 export interface ExerciseInput {
-  exercise: LiftExerciseKey;
+  /** Garmin taxonomy keys, already resolved/validated by the caller. */
+  category: string;
+  exerciseName: string;
   sets: number;
   reps: number;
   /** Load in the unit given to buildStrengthWorkout (the user's display unit). */
@@ -80,7 +78,6 @@ function workStep(
   input: ExerciseInput,
   unit: WeightUnit,
 ): ExecutableStep {
-  const taxonomy = LIFT_EXERCISES[input.exercise];
   return {
     type: STRENGTH_WORKOUT.stepDtoType.executable,
     stepId: null,
@@ -91,8 +88,8 @@ function workStep(
     endCondition: STRENGTH_WORKOUT.endCondition.reps,
     endConditionValue: input.reps,
     targetType: STRENGTH_WORKOUT.noTarget,
-    category: taxonomy.category,
-    exerciseName: taxonomy.exerciseName,
+    category: input.category,
+    exerciseName: input.exerciseName,
     weightValue: input.targetWeight ?? null,
     weightUnit: input.targetWeight === undefined ? null : unit,
   };

@@ -194,6 +194,13 @@ export const STRENGTH_WORKOUT = {
 } as const;
 
 /**
+ * Garmin's public exercise taxonomy (static JSON, no auth required). Used
+ * to validate raw {category, exerciseName} pairs passed to create-workout.
+ */
+export const EXERCISE_TAXONOMY_URL =
+  'https://connect.garmin.com/web-data/exercises/Exercises.json';
+
+/**
  * The owner's lifts mapped to Garmin's exercise taxonomy
  * (connect.garmin.com/web-data/exercises/Exercises.json). Deliberately just
  * these eight, not the full ~1,500-entry list; add rows here as training

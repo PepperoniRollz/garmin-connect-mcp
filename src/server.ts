@@ -17,6 +17,7 @@ import {
   ToolName,
 } from './constants.js';
 import {todayDateString} from './clock.js';
+import {validateRawExercise} from './exerciseTaxonomy.js';
 import {getClient, getDisplayName} from './garminClient.js';
 import {buildStrengthWorkout} from './workoutBuilder.js';
 import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
@@ -661,13 +662,7 @@ export function createServer(): McpServer {
 
   // --- Garmin structured workouts (pushed to Garmin Connect → watch) ---
 
-  const exerciseSchema = z.object({
-    exercise: z
-      // z.enum needs a non-empty tuple; LIFT_EXERCISES keys are static.
-      .enum(Object.keys(LIFT_EXERCISES) as [LiftExerciseKey])
-      .describe(
-        `One of the configured lifts: ${Object.keys(LIFT_EXERCISES).join(', ')}`,
-      ),
+  const exerciseCommonFields = {
     sets: z.number().int().min(1).describe('Number of working sets'),
     reps: z.number().int().min(1).describe('Rep target per set'),
     targetWeight: z
@@ -685,7 +680,37 @@ export function createServer(): McpServer {
       .describe(
         'Timed rest between sets in seconds (default: press-lap-to-continue rest)',
       ),
+  };
+
+  const knownExerciseSchema = z.object({
+    exercise: z
+      // z.enum needs a non-empty tuple; LIFT_EXERCISES keys are static.
+      .enum(Object.keys(LIFT_EXERCISES) as [LiftExerciseKey])
+      .describe(
+        `One of the configured lifts: ${Object.keys(LIFT_EXERCISES).join(', ')}`,
+      ),
+    ...exerciseCommonFields,
   });
+
+  // Escape hatch for lifts outside the configured eight: raw Garmin
+  // taxonomy keys, checked against the fetched taxonomy when reachable.
+  const rawExerciseSchema = z.object({
+    category: z
+      .string()
+      .min(1)
+      .describe(
+        "Garmin exercise category key, e.g. 'BENCH_PRESS' (see connect.garmin.com/web-data/exercises/Exercises.json)",
+      ),
+    exerciseName: z
+      .string()
+      .min(1)
+      .describe(
+        "Garmin exercise name key within the category, e.g. 'BARBELL_BENCH_PRESS'",
+      ),
+    ...exerciseCommonFields,
+  });
+
+  const exerciseSchema = z.union([knownExerciseSchema, rawExerciseSchema]);
 
   server.registerTool(
     ToolName.CreateWorkout,
@@ -714,6 +739,30 @@ export function createServer(): McpServer {
     audited(
       ToolName.CreateWorkout,
       async ({name, exercises, description, scheduleDate}) => {
+        // Resolve every entry to taxonomy keys before any Garmin write:
+        // known keys map through LIFT_EXERCISES; raw pairs are uppercased
+        // and checked against the fetched taxonomy (advisory — accepted
+        // with a warning when the taxonomy is unreachable).
+        const resolved = [];
+        const warnings: string[] = [];
+        for (const item of exercises) {
+          if ('exercise' in item) {
+            resolved.push({...item, ...LIFT_EXERCISES[item.exercise]});
+            continue;
+          }
+          const category = item.category.trim().toUpperCase();
+          const exerciseName = item.exerciseName.trim().toUpperCase();
+          const verdict = await validateRawExercise(category, exerciseName);
+          if (!verdict.valid) {
+            return formatResult({created: null, error: verdict.reason});
+          }
+          if (!verdict.verified) {
+            warnings.push(
+              `${category}/${exerciseName} accepted unverified (taxonomy unreachable)`,
+            );
+          }
+          resolved.push({...item, category, exerciseName});
+        }
         const gc = await getClient();
         const settings = await gc.getUserSettings();
         const unit =
@@ -721,12 +770,7 @@ export function createServer(): McpServer {
           STRENGTH_WORKOUT.metricMeasurementSystem
             ? STRENGTH_WORKOUT.weightUnit.kilogram
             : STRENGTH_WORKOUT.weightUnit.pound;
-        const payload = buildStrengthWorkout(
-          name,
-          exercises,
-          unit,
-          description,
-        );
+        const payload = buildStrengthWorkout(name, resolved, unit, description);
         // The library types addWorkout around its running-workout example;
         // the endpoint accepts the strength DTO built above (shape pinned
         // by reading back a UI-built strength workout).
@@ -737,10 +781,8 @@ export function createServer(): McpServer {
           workoutId: created.workoutId ?? null,
           workoutName: created.workoutName,
           weightUnit: unit.unitKey,
-          exercises: exercises.map(input => ({
-            ...input,
-            ...LIFT_EXERCISES[input.exercise],
-          })),
+          exercises: resolved,
+          ...(warnings.length > 0 ? {warnings} : {}),
         };
         if (scheduleDate === undefined || created.workoutId === undefined) {
           return formatResult({created: result, scheduled: null});

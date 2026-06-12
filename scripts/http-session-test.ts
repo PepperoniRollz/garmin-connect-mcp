@@ -73,6 +73,48 @@ check(
   condensedSleep !== undefined && dateProperty(condensedSleep) !== undefined,
 );
 
+// 2c. Garmin workout tool schemas (synthetic fixture check, no Garmin
+// account): create-workout exercises items must accept BOTH input forms —
+// a known `exercise` key and a raw {category, exerciseName} pair — which
+// zod's union compiles to a JSON-schema anyOf.
+const createWorkout = tools.find(tool => tool.name === 'create-workout');
+const deleteWorkout = tools.find(tool => tool.name === 'delete-workout');
+const createProps = createWorkout?.inputSchema?.['properties'] as
+  | Record<string, Record<string, unknown>>
+  | undefined;
+check(
+  'create-workout registered with name + exercises + scheduleDate schema',
+  createProps?.['name'] !== undefined &&
+    createProps?.['exercises'] !== undefined &&
+    createProps?.['scheduleDate'] !== undefined,
+);
+const exerciseItemForms = (
+  createProps?.['exercises']?.['items'] as
+    | {anyOf?: Array<{properties?: Record<string, unknown>}>}
+    | undefined
+)?.anyOf;
+check(
+  'create-workout exercise items accept known-key form',
+  exerciseItemForms?.some(form => form.properties?.['exercise']) === true,
+  `${exerciseItemForms?.length ?? 0} forms`,
+);
+check(
+  'create-workout exercise items accept raw category/exerciseName form',
+  exerciseItemForms?.some(
+    form =>
+      form.properties?.['category'] !== undefined &&
+      form.properties?.['exerciseName'] !== undefined,
+  ) === true,
+);
+const deleteWorkoutSchema = deleteWorkout?.inputSchema as
+  | {properties?: Record<string, unknown>; required?: string[]}
+  | undefined;
+check(
+  'delete-workout registered and requires workoutId',
+  deleteWorkoutSchema?.properties?.['workoutId'] !== undefined &&
+    deleteWorkoutSchema?.required?.includes('workoutId') === true,
+);
+
 // 3. Second session is independent (per-session transport map).
 const transport2 = new StreamableHTTPClientTransport(mcpUrl, {
   requestInit: {headers: authHeaders},
