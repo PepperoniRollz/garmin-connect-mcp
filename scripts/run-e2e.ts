@@ -68,6 +68,7 @@ const serverEnv: NodeJS.ProcessEnv = {
   AUTH_DB_PATH: path.join(workDir, 'auth.db'),
   TOKEN_CACHE_DIR: path.join(workDir, 'tokens'),
   LIFT_DB_PATH: path.join(workDir, 'lifts.db'),
+  LIFT_TIMEZONE: 'America/New_York',
   LOG_LEVEL: 'warn',
 };
 

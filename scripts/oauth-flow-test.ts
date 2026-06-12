@@ -248,7 +248,7 @@ await mcpClient.connect(transport);
 const {tools} = await mcpClient.listTools();
 check(
   'authenticated MCP session lists tools',
-  tools.length === 18,
+  tools.length === 20,
   `${tools.length} tools`,
 );
 await transport.terminateSession();

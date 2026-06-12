@@ -22,6 +22,9 @@ services:
       # Personal lift log — its own volume, separate from auth/tokens, so
       # it survives container rebuilds and a logging bug can't touch tokens.
       LIFT_DB_PATH: /data/lifts/lifts.db
+      # IANA timezone for the default "today" so a late-night log lands on
+      # the correct local calendar day rather than the container's UTC.
+      LIFT_TIMEZONE: ${LIFT_TIMEZONE:-America/New_York}
       # Listen on all container interfaces; outside exposure is controlled
       # by the localhost-only port publish above.
       BIND_HOST: 0.0.0.0

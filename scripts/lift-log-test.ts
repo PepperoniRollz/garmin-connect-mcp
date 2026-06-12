@@ -46,9 +46,19 @@ await client.connect(transport);
 // 0. Schema-fixture checks: all three tools registered with expected inputs.
 const {tools} = await client.listTools();
 const byName = new Map(tools.map(tool => [tool.name, tool]));
-for (const name of ['log-lift', 'get-lift-history', 'get-lift-progress']) {
+for (const name of [
+  'log-lift',
+  'get-lift-history',
+  'get-lift-progress',
+  'update-lift',
+  'delete-lift',
+]) {
   check(`${name} is registered`, byName.has(name));
 }
+const deleteProps = byName.get('delete-lift')?.inputSchema?.['properties'] as
+  | Record<string, unknown>
+  | undefined;
+check('delete-lift schema requires id', deleteProps?.['id'] !== undefined);
 const logProps = byName.get('log-lift')?.inputSchema?.['properties'] as
   | Record<string, unknown>
   | undefined;
@@ -149,6 +159,107 @@ check(
   Array.isArray(progress['progression']) &&
     (progress['progression'] as unknown[]).length >= 1,
 );
+
+// 5. update-lift: change weight + note, verify it took effect.
+const updated = parseToolResult(
+  await client.callTool({
+    name: 'update-lift',
+    arguments: {id: savedId, weight: 145, note: 'corrected load'},
+  }),
+);
+check('update-lift reports success', updated['updated'] === true);
+const updatedSession = updated['session'] as {
+  topSetWeight: number;
+  note?: string;
+  totalReps: number;
+};
+check(
+  'update-lift applied new weight to all sets',
+  updatedSession.topSetWeight === 145,
+);
+check('update-lift preserved reps (still 32)', updatedSession.totalReps === 32);
+check(
+  'update-lift saved the corrected note',
+  updatedSession.note === 'corrected load',
+);
+
+// Confirm the change is visible on read-back.
+const afterUpdate = parseToolResult(
+  await client.callTool({
+    name: 'get-lift-history',
+    arguments: {lift: 'bench press'},
+  }),
+);
+const reread = (
+  afterUpdate['sessions'] as {id: string; topSetWeight: number}[]
+).find(s => s.id === savedId);
+check(
+  'updated weight round-trips through history',
+  reread?.topSetWeight === 145,
+);
+
+// 6. update-lift on an unknown id reports failure cleanly.
+const missingUpdate = parseToolResult(
+  await client.callTool({
+    name: 'update-lift',
+    arguments: {id: 'does-not-exist', note: 'noop'},
+  }),
+);
+check(
+  'update-lift on unknown id → updated:false',
+  missingUpdate['updated'] === false,
+);
+
+// 7. delete-lift removes the row; verify it's gone.
+const deleted = parseToolResult(
+  await client.callTool({name: 'delete-lift', arguments: {id: savedId}}),
+);
+check('delete-lift reports success', deleted['deleted'] === true);
+const afterDelete = parseToolResult(
+  await client.callTool({
+    name: 'get-lift-history',
+    arguments: {lift: 'bench press'},
+  }),
+);
+const stillThere = (afterDelete['sessions'] as {id: string}[]).some(
+  s => s.id === savedId,
+);
+check('deleted session is gone from history', !stillThere);
+
+// 8. delete-lift on an already-gone id reports failure cleanly.
+const missingDelete = parseToolResult(
+  await client.callTool({name: 'delete-lift', arguments: {id: savedId}}),
+);
+check(
+  'delete-lift on unknown id → deleted:false',
+  missingDelete['deleted'] === false,
+);
+
+// 9. Timezone: a default-dated log lands on the configured local day
+//    (the suite server runs with LIFT_TIMEZONE=America/New_York), which can
+//    differ from the UTC calendar day late at night.
+const nyToday = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
+const defaultDated = parseToolResult(
+  await client.callTool({
+    name: 'log-lift',
+    arguments: {lift: 'tz probe', sets: [{weight: 1, reps: 1}]},
+  }),
+);
+const defaultDate = (defaultDated['saved'] as {date: string; id: string}).date;
+check(
+  'default date uses configured timezone, not UTC',
+  defaultDate === nyToday,
+  `${defaultDate} (NY today ${nyToday})`,
+);
+await client.callTool({
+  name: 'delete-lift',
+  arguments: {id: (defaultDated['saved'] as {id: string}).id},
+});
 
 await transport.terminateSession();
 await client.close();

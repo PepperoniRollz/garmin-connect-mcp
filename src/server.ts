@@ -13,8 +13,9 @@ import {
   SERVER_INFO,
   ToolName,
 } from './constants.js';
+import {todayDateString} from './clock.js';
 import {getClient, getDisplayName} from './garminClient.js';
-import {LiftSession, LiftSet} from './lift/db.js';
+import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
 import {getLiftStore} from './lift/store.js';
 import {logger} from './logger.js';
 
@@ -57,12 +58,6 @@ function parseDate(dateStr?: string): Date | undefined {
   if (!dateStr) return undefined;
   // Append time to avoid UTC midnight parsing (which shifts the date in western timezones)
   return new Date(dateStr + 'T00:00:00');
-}
-
-/** Local-timezone YYYY-MM-DD, matching the library's own date formatting. */
-function toDateString(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function formatResult(data: unknown): {
@@ -390,7 +385,7 @@ export function createServer(): McpServer {
     audited(ToolName.GetDailySummary, async ({date}) => {
       const gc = await getClient();
       const displayName = await getDisplayName();
-      const calendarDate = date ?? toDateString(new Date());
+      const calendarDate = date ?? todayDateString();
       const url = `${GARMIN_API.base}${GARMIN_API.dailySummaryPath}${encodeURIComponent(displayName)}`;
       // No library wrapper exists for this endpoint; use its public get()
       // escape hatch and pick the stable fields.
@@ -425,7 +420,7 @@ export function createServer(): McpServer {
       const sleep = await gc.getSleepData(parseDate(date));
       const dto = sleep?.dailySleepDTO;
       return formatResult({
-        date: dto?.calendarDate ?? date ?? toDateString(new Date()),
+        date: dto?.calendarDate ?? date ?? todayDateString(),
         sleepTimeSeconds: dto?.sleepTimeSeconds ?? null,
         napTimeSeconds: dto?.napTimeSeconds ?? null,
         stages: {
@@ -473,7 +468,7 @@ export function createServer(): McpServer {
     audited(ToolName.LogLift, async ({lift, sets, date, note}) => {
       const store = getLiftStore();
       const saved = store.insertSession({
-        date: date ?? toDateString(new Date()),
+        date: date ?? todayDateString(),
         lift,
         sets,
         note,
@@ -570,6 +565,92 @@ export function createServer(): McpServer {
         currentWorkingWeight: topSetWeight(latest.sets),
         dueToAddWeight: assessment.recommendation === 'add-weight',
         assessment,
+      });
+    }),
+  );
+
+  server.registerTool(
+    ToolName.UpdateLift,
+    {
+      description:
+        'Correct a previously logged lift session in place. Provide the session id and only the fields to change',
+      inputSchema: {
+        id: z
+          .string()
+          .describe('Session id (from log-lift or get-lift-history)'),
+        lift: z.string().optional().describe('Corrected lift name'),
+        sets: z
+          .array(setSchema)
+          .min(1)
+          .optional()
+          .describe('Replacement working sets, each {weight, reps}'),
+        weight: z
+          .number()
+          .optional()
+          .describe(
+            'Convenience: overwrite the weight on every existing set (reps kept). Ignored if `sets` is provided',
+          ),
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe('Corrected date in YYYY-MM-DD format'),
+        note: z.string().optional().describe('Corrected note'),
+      },
+    },
+    audited(
+      ToolName.UpdateLift,
+      async ({id, lift, sets, weight, date, note}) => {
+        const store = getLiftStore();
+        const existing = store.getById(id);
+        if (existing === undefined) {
+          return formatResult({
+            updated: false,
+            message: `No session with id ${id}.`,
+          });
+        }
+        // `weight` rewrites the load on the existing sets; an explicit `sets`
+        // array always wins over it.
+        const patch: Partial<NewLiftSession> = {lift, date, note};
+        if (sets !== undefined) {
+          patch.sets = sets;
+        } else if (weight !== undefined) {
+          patch.sets = existing.sets.map(set => ({...set, weight}));
+        }
+        const updated = store.updateSession(id, patch);
+        return formatResult({
+          updated: updated !== undefined,
+          session:
+            updated === undefined
+              ? null
+              : {
+                  ...updated,
+                  topSetWeight: topSetWeight(updated.sets),
+                  totalReps: totalReps(updated.sets),
+                },
+        });
+      },
+    ),
+  );
+
+  server.registerTool(
+    ToolName.DeleteLift,
+    {
+      description: 'Delete a logged lift session by id',
+      inputSchema: {
+        id: z
+          .string()
+          .describe('Session id (from log-lift or get-lift-history)'),
+      },
+    },
+    audited(ToolName.DeleteLift, async ({id}) => {
+      const store = getLiftStore();
+      const deleted = store.deleteSession(id);
+      return formatResult({
+        deleted,
+        message: deleted
+          ? `Deleted session ${id}.`
+          : `No session with id ${id}.`,
       });
     }),
   );

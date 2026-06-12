@@ -10,6 +10,7 @@ import path from 'path';
 
 import {z} from 'zod';
 
+import {isValidTimezone} from './clock.js';
 import {
   AUTH_DB_FILE_NAME,
   LIFT_DB_FILE_NAME,
@@ -51,6 +52,8 @@ export interface AppConfig {
   tokenCacheDir: string;
   /** SQLite file for the personal lift log (both transport modes). */
   liftDbPath: string;
+  /** IANA timezone used to resolve the default "today" for dated tools. */
+  liftTimezone: string;
   /** Present only when transportMode is http. */
   http?: HttpConfig;
 }
@@ -129,6 +132,22 @@ function resolveLiftDbPath(env: Env, issues: string[]): string {
     return path.join(os.homedir(), LIFT_DB_FILE_NAME);
   }
   return path.resolve(parsed.data);
+}
+
+function resolveLiftTimezone(env: Env, issues: string[]): string {
+  // Prefer an explicit LIFT_TIMEZONE, fall back to the process TZ, then to
+  // the runtime's resolved zone (UTC in a default container).
+  const raw =
+    env[EnvVar.LiftTimezone] ??
+    env[EnvVar.Tz] ??
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (!isValidTimezone(raw)) {
+    issues.push(
+      `${EnvVar.LiftTimezone}: "${raw}" is not a valid IANA timezone (e.g. America/New_York)`,
+    );
+    return 'UTC';
+  }
+  return raw;
 }
 
 function checkLogLevel(env: Env, issues: string[]): void {
@@ -276,6 +295,7 @@ export function loadConfig(
   const port = resolvePort(env, issues);
   const tokenCacheDir = resolveTokenCacheDir(env, issues);
   const liftDbPath = resolveLiftDbPath(env, issues);
+  const liftTimezone = resolveLiftTimezone(env, issues);
   checkLogLevel(env, issues);
   const http =
     transportMode === TransportMode.Http
@@ -286,5 +306,5 @@ export function loadConfig(
     throw new ConfigError(issues);
   }
 
-  return {transportMode, port, tokenCacheDir, liftDbPath, http};
+  return {transportMode, port, tokenCacheDir, liftDbPath, liftTimezone, http};
 }

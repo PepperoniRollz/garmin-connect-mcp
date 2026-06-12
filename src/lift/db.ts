@@ -148,6 +148,37 @@ export class LiftDb {
     return row === undefined ? undefined : rowToSession(row);
   }
 
+  /**
+   * Applies a partial update to a session (read-modify-write, all columns
+   * rebound). Returns the updated row, or undefined if the id is unknown.
+   */
+  updateSession(
+    id: string,
+    patch: Partial<NewLiftSession>,
+  ): LiftSession | undefined {
+    const existing = this.getById(id);
+    if (existing === undefined) return undefined;
+    const updated: LiftSession = {
+      ...existing,
+      date: patch.date ?? existing.date,
+      lift: patch.lift ?? existing.lift,
+      sets: patch.sets ?? existing.sets,
+      note: patch.note !== undefined ? patch.note : existing.note,
+    };
+    this.db
+      .prepare(
+        'UPDATE sessions SET date = ?, lift = ?, sets = ?, note = ? WHERE id = ?',
+      )
+      .run(
+        updated.date,
+        updated.lift,
+        JSON.stringify(updated.sets),
+        updated.note ?? null,
+        id,
+      );
+    return updated;
+  }
+
   /** Deletes a session; returns true if a row was removed. */
   deleteSession(id: string): boolean {
     const result = this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);

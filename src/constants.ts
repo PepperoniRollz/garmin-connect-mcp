@@ -17,6 +17,8 @@ export enum EnvVar {
   TrustedProxy = 'TRUSTED_PROXY',
   BindHost = 'BIND_HOST',
   LiftDbPath = 'LIFT_DB_PATH',
+  LiftTimezone = 'LIFT_TIMEZONE',
+  Tz = 'TZ',
 }
 
 /** Supported transport modes for the server process. */
@@ -135,6 +137,8 @@ export enum ToolName {
   LogLift = 'log-lift',
   GetLiftHistory = 'get-lift-history',
   GetLiftProgress = 'get-lift-progress',
+  UpdateLift = 'update-lift',
+  DeleteLift = 'delete-lift',
 }
 
 /**

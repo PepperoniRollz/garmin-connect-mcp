@@ -7,6 +7,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {AppConfig} from '../config.js';
 import {TransportMode} from '../constants.js';
 import {createCredentialProvider} from '../credentials.js';
+import {configureTimezone} from '../clock.js';
 import {configureGarminClient} from '../garminClient.js';
 import {configureLiftStore} from '../lift/store.js';
 import {logger} from '../logger.js';
@@ -18,6 +19,7 @@ export async function runStdio(config: AppConfig): Promise<void> {
     tokenCacheDir: config.tokenCacheDir,
   });
   configureLiftStore(config.liftDbPath);
+  configureTimezone(config.liftTimezone);
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
