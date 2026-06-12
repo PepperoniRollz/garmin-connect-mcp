@@ -12,9 +12,9 @@ RUN npm run build && npm prune --omit=dev
 FROM node:lts-slim
 ENV NODE_ENV=production
 WORKDIR /app
-# /data holds the Garmin token cache and auth DB (mounted as named volumes;
+# /data holds the Garmin token cache, auth DB, and lift DB (mounted as named volumes;
 # pre-created here so first mount inherits node-user ownership).
-RUN mkdir -p /data/tokens /data/auth && chown -R node:node /data
+RUN mkdir -p /data/tokens /data/auth /data/lifts && chown -R node:node /data
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
