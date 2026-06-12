@@ -32,9 +32,9 @@ function check(name: string, ok: boolean, detail?: string): void {
   if (!ok) failures += 1;
 }
 
-function parseToolResult(result: {content: unknown}): Record<string, unknown> {
-  const text = (result.content as {text: string}[])[0].text;
-  return JSON.parse(text) as Record<string, unknown>;
+function parseToolResult(result: unknown): Record<string, unknown> {
+  const content = (result as {content: {text: string}[]}).content;
+  return JSON.parse(content[0].text) as Record<string, unknown>;
 }
 
 const transport = new StreamableHTTPClientTransport(mcpUrl, {
