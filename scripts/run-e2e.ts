@@ -67,6 +67,7 @@ const serverEnv: NodeJS.ProcessEnv = {
   SERVER_OWNER_PASSWORD_HASH: bcrypt.hashSync(OWNER_PASSWORD, 4), // low cost: test only
   AUTH_DB_PATH: path.join(workDir, 'auth.db'),
   TOKEN_CACHE_DIR: path.join(workDir, 'tokens'),
+  LIFT_DB_PATH: path.join(workDir, 'lifts.db'),
   LOG_LEVEL: 'warn',
 };
 
@@ -90,7 +91,14 @@ try {
     {...process.env, OAUTH_TEST_TOKEN_FILE: tokenSavePath},
   );
 
-  exitCode = oauthCode === 0 && sessionCode === 0 ? 0 : 1;
+  console.log('e2e: running lift-log suite');
+  const liftCode = await runToCompletion(
+    'npx',
+    ['tsx', 'scripts/lift-log-test.ts', BASE_URL],
+    {...process.env, OAUTH_TEST_TOKEN_FILE: tokenSavePath},
+  );
+
+  exitCode = oauthCode === 0 && sessionCode === 0 && liftCode === 0 ? 0 : 1;
   console.log(
     exitCode === 0 ? 'e2e: ALL SUITES PASSED' : 'e2e: FAILURES (see above)',
   );

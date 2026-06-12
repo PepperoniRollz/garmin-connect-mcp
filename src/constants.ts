@@ -16,6 +16,7 @@ export enum EnvVar {
   AuthDbPath = 'AUTH_DB_PATH',
   TrustedProxy = 'TRUSTED_PROXY',
   BindHost = 'BIND_HOST',
+  LiftDbPath = 'LIFT_DB_PATH',
 }
 
 /** Supported transport modes for the server process. */
@@ -78,6 +79,42 @@ export const TOKEN_DIR_NAME = '.garmin-mcp-tokens';
 /** Default file name (under the user's home) for the auth/token database. */
 export const AUTH_DB_FILE_NAME = '.garmin-mcp-auth.db';
 
+/**
+ * Default file name (under the user's home) for the lift-log database.
+ * Deliberately separate from the auth DB so a logging bug can never touch
+ * OAuth tokens.
+ */
+export const LIFT_DB_FILE_NAME = '.garmin-mcp-lifts.db';
+
+/**
+ * Double-progression parameters for straight-set training (the owner runs
+ * 4×8). When every working set hits the rep target, add weight next time;
+ * otherwise hold the load and beat the logbook (more reps).
+ */
+export const LIFT_PROGRESSION = {
+  /** Working sets per session expected at the target. */
+  setCount: 4,
+  /** Rep target per set that triggers a weight increase. */
+  repTarget: 8,
+  /** Suggested load jump for upper-body lifts, in the logged weight unit. */
+  upperIncrement: 5,
+  /** Suggested load jump for lower-body lifts, in the logged weight unit. */
+  lowerIncrement: 10,
+  /**
+   * Lower-body lift name substrings that take the larger increment. Matched
+   * case-insensitively against the lift name.
+   */
+  lowerBodyKeywords: [
+    'squat',
+    'deadlift',
+    'leg',
+    'lunge',
+    'hip thrust',
+    'calf',
+    'rdl',
+  ],
+} as const;
+
 /** Names of every MCP tool exposed by this server. */
 export enum ToolName {
   GetUserProfile = 'get-user-profile',
@@ -95,6 +132,9 @@ export enum ToolName {
   GetGolfSummary = 'get-golf-summary',
   GetDailySummary = 'get-daily-summary',
   GetSleep = 'get-sleep',
+  LogLift = 'log-lift',
+  GetLiftHistory = 'get-lift-history',
+  GetLiftProgress = 'get-lift-progress',
 }
 
 /**

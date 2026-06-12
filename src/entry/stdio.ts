@@ -8,6 +8,7 @@ import {AppConfig} from '../config.js';
 import {TransportMode} from '../constants.js';
 import {createCredentialProvider} from '../credentials.js';
 import {configureGarminClient} from '../garminClient.js';
+import {configureLiftStore} from '../lift/store.js';
 import {logger} from '../logger.js';
 import {createServer} from '../server.js';
 
@@ -16,6 +17,7 @@ export async function runStdio(config: AppConfig): Promise<void> {
     credentialProvider: createCredentialProvider(TransportMode.Stdio),
     tokenCacheDir: config.tokenCacheDir,
   });
+  configureLiftStore(config.liftDbPath);
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);

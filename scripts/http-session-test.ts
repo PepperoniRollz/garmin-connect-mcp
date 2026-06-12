@@ -53,7 +53,7 @@ check('initialize issues Mcp-Session-Id', sessionId !== undefined, sessionId);
 const {tools} = await client.listTools();
 check(
   'tools/list on session returns tools',
-  tools.length === 15,
+  tools.length === 18,
   `${tools.length} tools`,
 );
 

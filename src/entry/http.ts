@@ -41,6 +41,7 @@ import {
 } from '../constants.js';
 import {createCredentialProvider} from '../credentials.js';
 import {configureGarminClient} from '../garminClient.js';
+import {configureLiftStore} from '../lift/store.js';
 import {logger} from '../logger.js';
 import {createServer} from '../server.js';
 import {AuthDb} from '../auth/db.js';
@@ -100,6 +101,7 @@ export async function runHttp(config: AppConfig): Promise<void> {
     credentialProvider: createCredentialProvider(TransportMode.Http),
     tokenCacheDir: config.tokenCacheDir,
   });
+  configureLiftStore(config.liftDbPath);
 
   const db = new AuthDb(httpConfig.authDbPath);
   const provider = new OwnerAuthorizationProvider(db);
