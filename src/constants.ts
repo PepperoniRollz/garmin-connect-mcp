@@ -201,45 +201,132 @@ export const EXERCISE_TAXONOMY_URL =
   'https://connect.garmin.com/web-data/exercises/Exercises.json';
 
 /**
- * The owner's lifts mapped to Garmin's exercise taxonomy
- * (connect.garmin.com/web-data/exercises/Exercises.json). Deliberately just
- * these eight, not the full ~1,500-entry list; add rows here as training
- * changes. BARBELL_BENCH_PRESS and DUMBBELL_BICEPS_CURL were additionally
- * confirmed against a real UI-built workout payload.
+ * The owner's lift vocabulary mapped to Garmin's exercise taxonomy
+ * (connect.garmin.com/web-data/exercises/Exercises.json) — home barbell
+ * setup plus common commercial/hotel-gym equipment, not the full
+ * ~1,500-entry list. Every pair below was verified against the live
+ * taxonomy file; add rows here as training changes (verify first — the
+ * naming is unintuitive, e.g. cable pull-through lives under CHOP).
+ * Notably ABSENT from Garmin's taxonomy: pec deck / machine fly (use
+ * cable-fly or dumbbell-fly instead); machine chest press and machine leg
+ * extension exist only under the odd categories used below.
  */
 export const LIFT_EXERCISES = {
-  'bench-press': {
-    category: 'BENCH_PRESS',
-    exerciseName: 'BARBELL_BENCH_PRESS',
+  // Squat / legs
+  squat: {category: 'SQUAT', exerciseName: 'BARBELL_BACK_SQUAT'},
+  'front-squat': {category: 'SQUAT', exerciseName: 'BARBELL_FRONT_SQUAT'},
+  'goblet-squat': {category: 'SQUAT', exerciseName: 'GOBLET_SQUAT'},
+  'bulgarian-split-squat': {
+    category: 'LUNGE',
+    exerciseName: 'DUMBBELL_BULGARIAN_SPLIT_SQUAT',
   },
-  'incline-bench-press': {
-    category: 'BENCH_PRESS',
-    exerciseName: 'INCLINE_BARBELL_BENCH_PRESS',
+  'leg-press': {category: 'SQUAT', exerciseName: 'LEG_PRESS'},
+  'hack-squat': {category: 'SQUAT', exerciseName: 'BARBELL_HACK_SQUAT'},
+  lunge: {category: 'LUNGE', exerciseName: 'LUNGE'},
+  'walking-lunge': {category: 'LUNGE', exerciseName: 'WALKING_LUNGE'},
+  'leg-curl': {category: 'LEG_CURL', exerciseName: 'LEG_CURL'},
+  // Garmin has no machine leg extension; this is its only "Leg Extension".
+  'leg-extension': {
+    category: 'BANDED_EXERCISES',
+    exerciseName: 'LEG_EXTENSION',
   },
-  'overhead-press': {
-    category: 'SHOULDER_PRESS',
-    exerciseName: 'OVERHEAD_BARBELL_PRESS',
-  },
-  squat: {
-    category: 'SQUAT',
-    exerciseName: 'BARBELL_BACK_SQUAT',
-  },
-  deadlift: {
-    category: 'DEADLIFT',
-    exerciseName: 'BARBELL_DEADLIFT',
-  },
-  'barbell-row': {
-    category: 'ROW',
-    exerciseName: 'BARBELL_ROW',
-  },
+  'calf-raise': {category: 'CALF_RAISE', exerciseName: 'CALF_RAISE'},
+  // Hinge
+  deadlift: {category: 'DEADLIFT', exerciseName: 'BARBELL_DEADLIFT'},
   'romanian-deadlift': {
     category: 'DEADLIFT',
     exerciseName: 'ROMANIAN_DEADLIFT',
   },
-  'dumbbell-curl': {
-    category: 'CURL',
-    exerciseName: 'DUMBBELL_BICEPS_CURL',
+  'good-morning': {category: 'LEG_CURL', exerciseName: 'GOOD_MORNING'},
+  'hip-thrust': {
+    category: 'HIP_RAISE',
+    exerciseName: 'BARBELL_HIP_THRUST_WITH_BENCH',
   },
+  'cable-pull-through': {
+    category: 'CHOP',
+    exerciseName: 'CABLE_PULL_THROUGH',
+  },
+  // Chest
+  'bench-press': {category: 'BENCH_PRESS', exerciseName: 'BARBELL_BENCH_PRESS'},
+  'incline-bench-press': {
+    category: 'BENCH_PRESS',
+    exerciseName: 'INCLINE_BARBELL_BENCH_PRESS',
+  },
+  'dumbbell-bench-press': {
+    category: 'BENCH_PRESS',
+    exerciseName: 'DUMBBELL_BENCH_PRESS',
+  },
+  'incline-dumbbell-bench-press': {
+    category: 'BENCH_PRESS',
+    exerciseName: 'INCLINE_DUMBBELL_BENCH_PRESS',
+  },
+  // Garmin's only plain "Chest Press" (machine) lives under SLED.
+  'machine-chest-press': {category: 'SLED', exerciseName: 'CHEST_PRESS'},
+  'cable-fly': {category: 'FLYE', exerciseName: 'CABLE_CROSSOVER'},
+  'dumbbell-fly': {category: 'FLYE', exerciseName: 'DUMBBELL_FLYE'},
+  dip: {category: 'TRICEPS_EXTENSION', exerciseName: 'BODY_WEIGHT_DIP'},
+  'push-up': {category: 'PUSH_UP', exerciseName: 'PUSH_UP'},
+  // Back
+  'barbell-row': {category: 'ROW', exerciseName: 'BARBELL_ROW'},
+  'dumbbell-row': {category: 'ROW', exerciseName: 'DUMBBELL_ROW'},
+  'seated-cable-row': {category: 'ROW', exerciseName: 'SEATED_CABLE_ROW'},
+  'lat-pulldown': {category: 'PULL_UP', exerciseName: 'LAT_PULLDOWN'},
+  'pull-up': {category: 'PULL_UP', exerciseName: 'PULL_UP'},
+  'chin-up': {category: 'PULL_UP', exerciseName: 'CHIN_UP'},
+  'face-pull': {category: 'ROW', exerciseName: 'FACE_PULL'},
+  'straight-arm-pulldown': {
+    category: 'PULL_UP',
+    exerciseName: 'STRAIGHT_ARM_PULLDOWN',
+  },
+  // Shoulders
+  'overhead-press': {
+    category: 'SHOULDER_PRESS',
+    exerciseName: 'OVERHEAD_BARBELL_PRESS',
+  },
+  'dumbbell-shoulder-press': {
+    category: 'SHOULDER_PRESS',
+    exerciseName: 'DUMBBELL_SHOULDER_PRESS',
+  },
+  'arnold-press': {category: 'SHOULDER_PRESS', exerciseName: 'ARNOLD_PRESS'},
+  'lateral-raise': {
+    category: 'LATERAL_RAISE',
+    exerciseName: 'DUMBBELL_LATERAL_RAISE',
+  },
+  'front-raise': {category: 'LATERAL_RAISE', exerciseName: 'FRONT_RAISE'},
+  'rear-delt-fly': {
+    category: 'LATERAL_RAISE',
+    exerciseName: 'BENT_OVER_LATERAL_RAISE',
+  },
+  'cable-lateral-raise': {
+    category: 'LATERAL_RAISE',
+    exerciseName: 'ONE_ARM_CABLE_LATERAL_RAISE',
+  },
+  // Arms
+  'barbell-curl': {category: 'CURL', exerciseName: 'BARBELL_BICEPS_CURL'},
+  'dumbbell-curl': {category: 'CURL', exerciseName: 'DUMBBELL_BICEPS_CURL'},
+  'hammer-curl': {category: 'CURL', exerciseName: 'DUMBBELL_HAMMER_CURL'},
+  'cable-curl': {category: 'CURL', exerciseName: 'CABLE_BICEPS_CURL'},
+  'preacher-curl': {category: 'CURL', exerciseName: 'EZ_BAR_PREACHER_CURL'},
+  'tricep-pushdown': {
+    category: 'TRICEPS_EXTENSION',
+    exerciseName: 'TRICEPS_PRESSDOWN',
+  },
+  'overhead-tricep-extension': {
+    category: 'TRICEPS_EXTENSION',
+    exerciseName: 'OVERHEAD_DUMBBELL_TRICEPS_EXTENSION',
+  },
+  skullcrusher: {
+    category: 'TRICEPS_EXTENSION',
+    exerciseName: 'LYING_EZ_BAR_TRICEPS_EXTENSION',
+  },
+  // Core
+  plank: {category: 'PLANK', exerciseName: 'PLANK'},
+  'hanging-leg-raise': {
+    category: 'LEG_RAISE',
+    exerciseName: 'HANGING_LEG_RAISE',
+  },
+  'cable-crunch': {category: 'CRUNCH', exerciseName: 'CABLE_CRUNCH'},
+  'russian-twist': {category: 'CORE', exerciseName: 'RUSSIAN_TWIST'},
 } as const;
 
 export type LiftExerciseKey = keyof typeof LIFT_EXERCISES;

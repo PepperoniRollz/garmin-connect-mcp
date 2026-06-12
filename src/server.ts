@@ -687,7 +687,7 @@ export function createServer(): McpServer {
       // z.enum needs a non-empty tuple; LIFT_EXERCISES keys are static.
       .enum(Object.keys(LIFT_EXERCISES) as [LiftExerciseKey])
       .describe(
-        `One of the configured lifts: ${Object.keys(LIFT_EXERCISES).join(', ')}`,
+        'Shorthand key for a configured lift (the enum lists all of them, grouped: squat/legs, hinge, chest, back, shoulders, arms, core)',
       ),
     ...exerciseCommonFields,
   });
