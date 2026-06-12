@@ -37,6 +37,14 @@ night for sleep tools).
 | `log-lift` | **Write.** Logs a lifting session (`lift`, `sets[]` of `{weight, reps}`, optional `date`/`note`) and returns a double-progression assessment | Personal data — **not** from Garmin. Stored in a separate lift DB (`LIFT_DB_PATH`), never in the auth DB. All sets at the rep target → suggests adding weight (lower-body lifts get the larger jump); otherwise hold and beat the logbook |
 | `get-lift-history` | Logged sessions newest-first, each with top-set weight and total reps (optional `lift` filter, `limit`) | Same separate lift DB |
 | `get-lift-progress` | Weight progression over time for one `lift`, plus current working weight and whether you're due to add weight | Same separate lift DB |
+| `update-lift` | **Write.** Corrects a logged session in place by `id` — change `sets`, `date`, `note`, or `lift`; `weight` overwrites the load on every existing set (reps kept) | Get the `id` from `log-lift`/`get-lift-history` |
+| `delete-lift` | **Write.** Removes a logged session by `id` | |
+
+> **Default date and timezone.** Tools that default `date` to "today"
+> (`log-lift`, the Garmin daily tools) resolve the calendar day in
+> `LIFT_TIMEZONE` (falling back to `TZ`, then the runtime's zone). Set this
+> to your IANA zone (e.g. `America/New_York`) so a late-night log lands on
+> the correct local day rather than UTC.
 
 > The lift log is **user-written personal data**, stored in its own SQLite
 > database (`LIFT_DB_PATH`), kept entirely separate from Garmin-sourced data
@@ -147,6 +155,8 @@ OAUTH_TEST_PASSWORD=... npx tsx scripts/oauth-flow-test.ts https://garmin-mcp.ex
 | `SERVER_OWNER_PASSWORD_HASH` | http | yes | — | bcrypt hash from `npm run hash-password` |
 | `AUTH_DB_PATH` | http | no | `~/.garmin-mcp-auth.db` | SQLite file for OAuth clients/codes/tokens |
 | `TOKEN_CACHE_DIR` | both | no | `~/.garmin-mcp-tokens` | Garmin OAuth token cache |
+| `LIFT_DB_PATH` | both | no | `~/.garmin-mcp-lifts.db` | SQLite file for the personal lift log (separate from auth) |
+| `LIFT_TIMEZONE` | both | no | `TZ`, else runtime zone | IANA zone for the default "today" (e.g. `America/New_York`) |
 | `TRUSTED_PROXY` | http | no | `loopback` | Express trust-proxy (IP/CIDR/list); set to the Docker bridge gateway in compose |
 | `LOG_LEVEL` | both | no | `info` | `debug`/`info`/`warn`/`error`; structured JSON on stderr |
 

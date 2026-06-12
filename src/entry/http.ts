@@ -40,6 +40,7 @@ import {
   TransportMode,
 } from '../constants.js';
 import {createCredentialProvider} from '../credentials.js';
+import {configureTimezone} from '../clock.js';
 import {configureGarminClient} from '../garminClient.js';
 import {configureLiftStore} from '../lift/store.js';
 import {logger} from '../logger.js';
@@ -102,6 +103,7 @@ export async function runHttp(config: AppConfig): Promise<void> {
     tokenCacheDir: config.tokenCacheDir,
   });
   configureLiftStore(config.liftDbPath);
+  configureTimezone(config.liftTimezone);
 
   const db = new AuthDb(httpConfig.authDbPath);
   const provider = new OwnerAuthorizationProvider(db);
