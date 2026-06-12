@@ -9,12 +9,16 @@ import {z} from 'zod';
 import {
   AuditEvent,
   GARMIN_API,
+  LIFT_EXERCISES,
   LIFT_PROGRESSION,
+  LiftExerciseKey,
   SERVER_INFO,
+  STRENGTH_WORKOUT,
   ToolName,
 } from './constants.js';
 import {todayDateString} from './clock.js';
 import {getClient, getDisplayName} from './garminClient.js';
+import {buildStrengthWorkout} from './workoutBuilder.js';
 import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
 import {getLiftStore} from './lift/store.js';
 import {logger} from './logger.js';
@@ -652,6 +656,135 @@ export function createServer(): McpServer {
           ? `Deleted session ${id}.`
           : `No session with id ${id}.`,
       });
+    }),
+  );
+
+  // --- Garmin structured workouts (pushed to Garmin Connect → watch) ---
+
+  const exerciseSchema = z.object({
+    exercise: z
+      // z.enum needs a non-empty tuple; LIFT_EXERCISES keys are static.
+      .enum(Object.keys(LIFT_EXERCISES) as [LiftExerciseKey])
+      .describe(
+        `One of the configured lifts: ${Object.keys(LIFT_EXERCISES).join(', ')}`,
+      ),
+    sets: z.number().int().min(1).describe('Number of working sets'),
+    reps: z.number().int().min(1).describe('Rep target per set'),
+    targetWeight: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Target load in the account's display unit (lb or kg per Garmin settings)",
+      ),
+    restSeconds: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Timed rest between sets in seconds (default: press-lap-to-continue rest)',
+      ),
+  });
+
+  server.registerTool(
+    ToolName.CreateWorkout,
+    {
+      description:
+        'Create a structured strength workout in Garmin Connect (it syncs to the watch under Training > Workouts). Each exercise becomes sets × reps at an optional target weight with optional timed rest. Optionally schedule it on a calendar date',
+      inputSchema: {
+        name: z.string().min(1).describe('Workout name shown on the watch'),
+        exercises: z
+          .array(exerciseSchema)
+          .min(1)
+          .describe('Exercises in workout order'),
+        description: z
+          .string()
+          .optional()
+          .describe('Optional workout description'),
+        scheduleDate: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe(
+            'Put the workout on this calendar date (YYYY-MM-DD) so the watch surfaces it that day',
+          ),
+      },
+    },
+    audited(
+      ToolName.CreateWorkout,
+      async ({name, exercises, description, scheduleDate}) => {
+        const gc = await getClient();
+        const settings = await gc.getUserSettings();
+        const unit =
+          settings.userData.measurementSystem ===
+          STRENGTH_WORKOUT.metricMeasurementSystem
+            ? STRENGTH_WORKOUT.weightUnit.kilogram
+            : STRENGTH_WORKOUT.weightUnit.pound;
+        const payload = buildStrengthWorkout(
+          name,
+          exercises,
+          unit,
+          description,
+        );
+        // The library types addWorkout around its running-workout example;
+        // the endpoint accepts the strength DTO built above (shape pinned
+        // by reading back a UI-built strength workout).
+        const created = await gc.addWorkout(
+          payload as unknown as Parameters<typeof gc.addWorkout>[0],
+        );
+        const result = {
+          workoutId: created.workoutId ?? null,
+          workoutName: created.workoutName,
+          weightUnit: unit.unitKey,
+          exercises: exercises.map(input => ({
+            ...input,
+            ...LIFT_EXERCISES[input.exercise],
+          })),
+        };
+        if (scheduleDate === undefined || created.workoutId === undefined) {
+          return formatResult({created: result, scheduled: null});
+        }
+        // Scheduling is a separate call; a failure here must not mask the
+        // successful creation, so it is reported instead of thrown.
+        try {
+          const schedule = await gc.post<Record<string, unknown>>(
+            `${GARMIN_API.base}${GARMIN_API.workoutSchedulePath}${created.workoutId}`,
+            {date: scheduleDate},
+          );
+          return formatResult({
+            created: result,
+            scheduled: {date: scheduleDate, response: schedule},
+          });
+        } catch (err) {
+          logger.warn('workout schedule failed after create', {
+            workoutId: created.workoutId,
+          });
+          return formatResult({
+            created: result,
+            scheduled: null,
+            scheduleError: `Workout was created but scheduling on ${scheduleDate} failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          });
+        }
+      },
+    ),
+  );
+
+  server.registerTool(
+    ToolName.DeleteWorkout,
+    {
+      description:
+        'Delete a workout from Garmin Connect by id (from get-workouts or create-workout)',
+      inputSchema: {
+        workoutId: z.number().int().describe('The workout ID to delete'),
+      },
+    },
+    audited(ToolName.DeleteWorkout, async ({workoutId}) => {
+      const gc = await getClient();
+      await gc.deleteWorkout({workoutId: String(workoutId)});
+      return formatResult({deleted: true, workoutId});
     }),
   );
 
