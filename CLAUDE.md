@@ -25,6 +25,9 @@ src/entry/http.ts   — Streamable HTTP entry point (Express, session map,
 src/auth/           — Built-in OAuth 2.1 authorization server (SDK
                       mcpAuthRouter provider, SQLite store via node:sqlite,
                       owner login page, redirect URI allowlist)
+src/lift/           — Personal lift log: separate SQLite store (db.ts) +
+                      configure/get singleton (store.ts). Distinct DB from
+                      auth — LIFT_DB_PATH, both transport modes
 scripts/            — Acceptance test scripts (run with tsx) + hash-password
 docs/SPEC.md        — Remote connector upgrade spec (phases, decisions)
 dist/               — Compiled JS output

@@ -34,6 +34,14 @@ night for sleep tools).
 | `get-daily-hydration` | Water intake for a date | **Ounces** |
 | `get-workouts` | Saved workout plans | |
 | `get-golf-summary` | Golf round summaries | |
+| `log-lift` | **Write.** Logs a lifting session (`lift`, `sets[]` of `{weight, reps}`, optional `date`/`note`) and returns a double-progression assessment | Personal data — **not** from Garmin. Stored in a separate lift DB (`LIFT_DB_PATH`), never in the auth DB. All sets at the rep target → suggests adding weight (lower-body lifts get the larger jump); otherwise hold and beat the logbook |
+| `get-lift-history` | Logged sessions newest-first, each with top-set weight and total reps (optional `lift` filter, `limit`) | Same separate lift DB |
+| `get-lift-progress` | Weight progression over time for one `lift`, plus current working weight and whether you're due to add weight | Same separate lift DB |
+
+> The lift log is **user-written personal data**, stored in its own SQLite
+> database (`LIFT_DB_PATH`), kept entirely separate from Garmin-sourced data
+> and from the OAuth auth database. Your real lift history lives only on your
+> server's volume and is never committed to this repo.
 
 ## Quickstart: stdio mode (Claude Code)
 

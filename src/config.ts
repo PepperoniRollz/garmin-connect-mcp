@@ -12,6 +12,7 @@ import {z} from 'zod';
 
 import {
   AUTH_DB_FILE_NAME,
+  LIFT_DB_FILE_NAME,
   CliFlag,
   DEFAULTS,
   EnvVar,
@@ -48,6 +49,8 @@ export interface AppConfig {
   port: number;
   /** Directory where the Garmin OAuth token cache is persisted. */
   tokenCacheDir: string;
+  /** SQLite file for the personal lift log (both transport modes). */
+  liftDbPath: string;
   /** Present only when transportMode is http. */
   http?: HttpConfig;
 }
@@ -112,6 +115,18 @@ function resolveTokenCacheDir(env: Env, issues: string[]): string {
   if (!parsed.success) {
     issues.push(`${EnvVar.TokenCacheDir}: must not be empty when set`);
     return path.join(os.homedir(), TOKEN_DIR_NAME);
+  }
+  return path.resolve(parsed.data);
+}
+
+function resolveLiftDbPath(env: Env, issues: string[]): string {
+  const raw = env[EnvVar.LiftDbPath];
+  if (raw === undefined) return path.join(os.homedir(), LIFT_DB_FILE_NAME);
+
+  const parsed = nonEmptyStringSchema.safeParse(raw);
+  if (!parsed.success) {
+    issues.push(`${EnvVar.LiftDbPath}: must not be empty when set`);
+    return path.join(os.homedir(), LIFT_DB_FILE_NAME);
   }
   return path.resolve(parsed.data);
 }
@@ -260,6 +275,7 @@ export function loadConfig(
   const transportMode = resolveTransportMode(env, argv, issues);
   const port = resolvePort(env, issues);
   const tokenCacheDir = resolveTokenCacheDir(env, issues);
+  const liftDbPath = resolveLiftDbPath(env, issues);
   checkLogLevel(env, issues);
   const http =
     transportMode === TransportMode.Http
@@ -270,5 +286,5 @@ export function loadConfig(
     throw new ConfigError(issues);
   }
 
-  return {transportMode, port, tokenCacheDir, http};
+  return {transportMode, port, tokenCacheDir, liftDbPath, http};
 }

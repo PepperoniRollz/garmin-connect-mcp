@@ -19,6 +19,9 @@ services:
       PORT: "8080"
       TOKEN_CACHE_DIR: /data/tokens
       AUTH_DB_PATH: /data/auth/auth.db
+      # Personal lift log — its own volume, separate from auth/tokens, so
+      # it survives container rebuilds and a logging bug can't touch tokens.
+      LIFT_DB_PATH: /data/lifts/lifts.db
       # Listen on all container interfaces; outside exposure is controlled
       # by the localhost-only port publish above.
       BIND_HOST: 0.0.0.0
@@ -28,6 +31,7 @@ services:
     volumes:
       - garmin-tokens:/data/tokens
       - garmin-auth:/data/auth
+      - garmin-lifts:/data/lifts
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -45,6 +49,8 @@ volumes:
     name: garmin-mcp-tokens
   garmin-auth:
     name: garmin-mcp-auth
+  garmin-lifts:
+    name: garmin-mcp-lifts
 
 networks:
   default:

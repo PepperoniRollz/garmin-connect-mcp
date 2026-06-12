@@ -6,8 +6,16 @@
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {z} from 'zod';
 
-import {AuditEvent, GARMIN_API, SERVER_INFO, ToolName} from './constants.js';
+import {
+  AuditEvent,
+  GARMIN_API,
+  LIFT_PROGRESSION,
+  SERVER_INFO,
+  ToolName,
+} from './constants.js';
 import {getClient, getDisplayName} from './garminClient.js';
+import {LiftSession, LiftSet} from './lift/db.js';
+import {getLiftStore} from './lift/store.js';
 import {logger} from './logger.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -62,6 +70,62 @@ function formatResult(data: unknown): {
 } {
   return {
     content: [{type: 'text' as const, text: JSON.stringify(data, null, 2)}],
+  };
+}
+
+/** Heaviest single set in a session (0 if no sets). */
+function topSetWeight(sets: LiftSet[]): number {
+  return sets.reduce((max, set) => Math.max(max, set.weight), 0);
+}
+
+/** Total reps across all sets in a session. */
+function totalReps(sets: LiftSet[]): number {
+  return sets.reduce((sum, set) => sum + set.reps, 0);
+}
+
+/** True when every working set met the rep target (double-progression trigger). */
+function hitAllReps(sets: LiftSet[]): boolean {
+  return (
+    sets.length >= LIFT_PROGRESSION.setCount &&
+    sets.every(set => set.reps >= LIFT_PROGRESSION.repTarget)
+  );
+}
+
+function isLowerBody(lift: string): boolean {
+  const name = lift.toLowerCase();
+  return LIFT_PROGRESSION.lowerBodyKeywords.some(keyword =>
+    name.includes(keyword),
+  );
+}
+
+interface ProgressionAssessment {
+  /** 'add-weight' when the rep target was met on every set, else 'hold'. */
+  recommendation: 'add-weight' | 'hold';
+  reason: string;
+  suggestedIncrement?: number;
+  suggestedTopSetWeight?: number;
+}
+
+/**
+ * Double-progression: if every set hit the rep target this session, suggest
+ * a load increase (lower body gets the larger jump); otherwise hold the
+ * weight and aim to beat the logbook on reps.
+ */
+function assessProgression(session: LiftSession): ProgressionAssessment {
+  if (hitAllReps(session.sets)) {
+    const increment = isLowerBody(session.lift)
+      ? LIFT_PROGRESSION.lowerIncrement
+      : LIFT_PROGRESSION.upperIncrement;
+    return {
+      recommendation: 'add-weight',
+      reason: `All ${session.sets.length} sets hit ${LIFT_PROGRESSION.repTarget}+ reps — add weight next session.`,
+      suggestedIncrement: increment,
+      suggestedTopSetWeight: topSetWeight(session.sets) + increment,
+    };
+  }
+  return {
+    recommendation: 'hold',
+    reason: `Not all sets reached ${LIFT_PROGRESSION.repTarget} reps — hold ${topSetWeight(session.sets)} and beat the logbook on reps next session.`,
   };
 }
 
@@ -376,6 +440,136 @@ export function createServer(): McpServer {
         hrvStatus: sleep?.hrvStatus ?? null,
         restingHeartRate: sleep?.restingHeartRate ?? null,
         bodyBatteryChange: sleep?.bodyBatteryChange ?? null,
+      });
+    }),
+  );
+
+  // --- Lift log (personal, user-written; stored in the separate lift DB) ---
+
+  const setSchema = z.object({
+    weight: z.number().describe('Load for the set (in your logged unit)'),
+    reps: z.number().int().describe('Reps completed'),
+  });
+
+  server.registerTool(
+    ToolName.LogLift,
+    {
+      description:
+        'Log a completed lifting session and get a double-progression assessment (add weight when all sets hit the rep target, otherwise hold and beat the logbook)',
+      inputSchema: {
+        lift: z.string().describe("Lift name, e.g. 'bench press', 'squat'"),
+        sets: z
+          .array(setSchema)
+          .min(1)
+          .describe('Working sets, each {weight, reps}'),
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe('Date in YYYY-MM-DD format (default: today)'),
+        note: z.string().optional().describe('Optional free-text note'),
+      },
+    },
+    audited(ToolName.LogLift, async ({lift, sets, date, note}) => {
+      const store = getLiftStore();
+      const saved = store.insertSession({
+        date: date ?? toDateString(new Date()),
+        lift,
+        sets,
+        note,
+      });
+      const prior = store.priorSession(lift, saved.id);
+      return formatResult({
+        saved: {
+          ...saved,
+          topSetWeight: topSetWeight(saved.sets),
+          totalReps: totalReps(saved.sets),
+        },
+        previousSession:
+          prior === undefined
+            ? null
+            : {
+                date: prior.date,
+                topSetWeight: topSetWeight(prior.sets),
+                totalReps: totalReps(prior.sets),
+              },
+        assessment: assessProgression(saved),
+      });
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetLiftHistory,
+    {
+      description:
+        'Get logged lift sessions newest-first, with each session top-set weight and total reps',
+      inputSchema: {
+        lift: z
+          .string()
+          .optional()
+          .describe('Filter by lift name (default: all lifts)'),
+        limit: z
+          .number()
+          .int()
+          .optional()
+          .describe('Number of sessions to return (default 20)'),
+      },
+    },
+    audited(ToolName.GetLiftHistory, async ({lift, limit}) => {
+      const store = getLiftStore();
+      const sessions = store.listSessions(lift, limit ?? 20);
+      return formatResult({
+        count: sessions.length,
+        sessions: sessions.map(session => ({
+          ...session,
+          topSetWeight: topSetWeight(session.sets),
+          totalReps: totalReps(session.sets),
+        })),
+      });
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetLiftProgress,
+    {
+      description:
+        'Get the weight progression for one lift over time (date, top-set weight, reps), plus the current working weight and whether you are due to add weight',
+      inputSchema: {
+        lift: z.string().describe('Lift name to chart progression for'),
+      },
+    },
+    audited(ToolName.GetLiftProgress, async ({lift}) => {
+      const store = getLiftStore();
+      // Pull the full history for this lift (newest-first), then chart it
+      // oldest-first for a trend view.
+      const sessions = store.listSessions(lift, Number.MAX_SAFE_INTEGER);
+      if (sessions.length === 0) {
+        return formatResult({
+          lift,
+          sessionCount: 0,
+          progression: [],
+          currentWorkingWeight: null,
+          dueToAddWeight: false,
+          message: `No sessions logged for "${lift}".`,
+        });
+      }
+      const progression = sessions
+        .slice()
+        .reverse()
+        .map(session => ({
+          date: session.date,
+          topSetWeight: topSetWeight(session.sets),
+          totalReps: totalReps(session.sets),
+        }));
+      const latest = sessions[0];
+      const assessment = assessProgression(latest);
+      return formatResult({
+        lift,
+        sessionCount: sessions.length,
+        progression,
+        currentWorkingWeight: topSetWeight(latest.sets),
+        dueToAddWeight: assessment.recommendation === 'add-weight',
+        assessment,
       });
     }),
   );
