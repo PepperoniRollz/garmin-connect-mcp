@@ -139,6 +139,8 @@ export enum ToolName {
   GetLiftProgress = 'get-lift-progress',
   UpdateLift = 'update-lift',
   DeleteLift = 'delete-lift',
+  CreateWorkout = 'create-workout',
+  DeleteWorkout = 'delete-workout',
 }
 
 /**
@@ -148,7 +150,99 @@ export enum ToolName {
 export const GARMIN_API = {
   base: 'https://connectapi.garmin.com',
   dailySummaryPath: '/usersummary-service/usersummary/daily/',
+  /** POST {date} here (suffixed with the workout id) to put a workout on the calendar. */
+  workoutSchedulePath: '/workout-service/schedule/',
 } as const;
+
+/**
+ * Garmin workout-service DTO vocabulary for structured strength workouts.
+ * Every id/key here was pinned empirically (2026-06-12) by building a
+ * strength workout in the Connect web UI and reading it back through
+ * getWorkoutDetail(): weights are expressed in the unit named by
+ * weightUnit (NOT kg-normalized), sets are a RepeatGroupDTO wrapping a
+ * reps-interval step plus a rest step, and a timed step is endCondition
+ * `time` with raw seconds in endConditionValue. The kilogram unit row is
+ * the one exception: derived from Garmin's gram-based factor table rather
+ * than captured (the probe account uses pounds).
+ */
+export const STRENGTH_WORKOUT = {
+  sportType: {sportTypeId: 5, sportTypeKey: 'strength_training'},
+  stepDtoType: {
+    executable: 'ExecutableStepDTO',
+    repeatGroup: 'RepeatGroupDTO',
+  },
+  stepType: {
+    interval: {stepTypeId: 3, stepTypeKey: 'interval'},
+    rest: {stepTypeId: 5, stepTypeKey: 'rest'},
+    repeat: {stepTypeId: 6, stepTypeKey: 'repeat'},
+  },
+  endCondition: {
+    lapButton: {conditionTypeId: 1, conditionTypeKey: 'lap.button'},
+    time: {conditionTypeId: 2, conditionTypeKey: 'time'},
+    iterations: {conditionTypeId: 7, conditionTypeKey: 'iterations'},
+    reps: {conditionTypeId: 10, conditionTypeKey: 'reps'},
+  },
+  noTarget: {workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target'},
+  /** Factors are grams per unit, matching Garmin's read-back payloads. */
+  weightUnit: {
+    pound: {unitId: 9, unitKey: 'pound', factor: 453.59237},
+    kilogram: {unitId: 8, unitKey: 'kilogram', factor: 1000},
+  },
+  /** userData.measurementSystem value that selects kilogram loads. */
+  metricMeasurementSystem: 'metric',
+  defaultDescription: 'Created by garmin-connect-mcp',
+} as const;
+
+/**
+ * Garmin's public exercise taxonomy (static JSON, no auth required). Used
+ * to validate raw {category, exerciseName} pairs passed to create-workout.
+ */
+export const EXERCISE_TAXONOMY_URL =
+  'https://connect.garmin.com/web-data/exercises/Exercises.json';
+
+/**
+ * The owner's lifts mapped to Garmin's exercise taxonomy
+ * (connect.garmin.com/web-data/exercises/Exercises.json). Deliberately just
+ * these eight, not the full ~1,500-entry list; add rows here as training
+ * changes. BARBELL_BENCH_PRESS and DUMBBELL_BICEPS_CURL were additionally
+ * confirmed against a real UI-built workout payload.
+ */
+export const LIFT_EXERCISES = {
+  'bench-press': {
+    category: 'BENCH_PRESS',
+    exerciseName: 'BARBELL_BENCH_PRESS',
+  },
+  'incline-bench-press': {
+    category: 'BENCH_PRESS',
+    exerciseName: 'INCLINE_BARBELL_BENCH_PRESS',
+  },
+  'overhead-press': {
+    category: 'SHOULDER_PRESS',
+    exerciseName: 'OVERHEAD_BARBELL_PRESS',
+  },
+  squat: {
+    category: 'SQUAT',
+    exerciseName: 'BARBELL_BACK_SQUAT',
+  },
+  deadlift: {
+    category: 'DEADLIFT',
+    exerciseName: 'BARBELL_DEADLIFT',
+  },
+  'barbell-row': {
+    category: 'ROW',
+    exerciseName: 'BARBELL_ROW',
+  },
+  'romanian-deadlift': {
+    category: 'DEADLIFT',
+    exerciseName: 'ROMANIAN_DEADLIFT',
+  },
+  'dumbbell-curl': {
+    category: 'CURL',
+    exerciseName: 'DUMBBELL_BICEPS_CURL',
+  },
+} as const;
+
+export type LiftExerciseKey = keyof typeof LIFT_EXERCISES;
 
 /** Routes served by the built-in OAuth login flow (outside the SDK router). */
 export enum AuthRoutePath {

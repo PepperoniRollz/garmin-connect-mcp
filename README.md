@@ -2,8 +2,9 @@
 
 An [MCP](https://modelcontextprotocol.io) server that connects Claude to
 your [Garmin Connect](https://connect.garmin.com) data — steps, heart rate,
-sleep, activities, workouts, hydration, weight, and golf summaries — as 13
-read-only tools.
+sleep, activities, workouts, hydration, weight, and golf summaries — plus a
+personal lift log and the ability to push structured strength workouts to
+Garmin Connect (and from there to the watch). 22 tools.
 
 Runs in two modes from one codebase:
 
@@ -39,6 +40,8 @@ night for sleep tools).
 | `get-lift-progress` | Weight progression over time for one `lift`, plus current working weight and whether you're due to add weight | Same separate lift DB |
 | `update-lift` | **Write.** Corrects a logged session in place by `id` — change `sets`, `date`, `note`, or `lift`; `weight` overwrites the load on every existing set (reps kept) | Get the `id` from `log-lift`/`get-lift-history` |
 | `delete-lift` | **Write.** Removes a logged session by `id` | |
+| `create-workout` | **Write (Garmin).** Creates a structured strength workout in Garmin Connect from `name` + `exercises[]` of `{exercise, sets, reps, targetWeight?, restSeconds?}`; optional `scheduleDate` puts it on the calendar | Syncs to the watch under Training > Workouts. Each exercise is either `exercise` (one of eight configured lifts, `src/constants.ts` `LIFT_EXERCISES`) or a raw `{category, exerciseName}` Garmin-taxonomy pair (validated against [Exercises.json](https://connect.garmin.com/web-data/exercises/Exercises.json) when reachable, accepted with a warning otherwise). `targetWeight` is in your Garmin display unit (lb/kg auto-detected from settings); `restSeconds` makes timed rests, omitted = lap-button rest |
+| `delete-workout` | **Write (Garmin).** Deletes a workout from Garmin Connect by `workoutId` | `workoutId` from `get-workouts`/`create-workout` |
 
 > **Default date and timezone.** Tools that default `date` to "today"
 > (`log-lift`, the Garmin daily tools) resolve the calendar day in
