@@ -13,6 +13,7 @@ import {
   LIFT_PROGRESSION,
   LiftExerciseKey,
   SERVER_INFO,
+  STRENGTH_SETS,
   STRENGTH_WORKOUT,
   ToolName,
 } from './constants.js';
@@ -20,6 +21,13 @@ import {todayDateString} from './clock.js';
 import {validateRawExercise} from './exerciseTaxonomy.js';
 import {getClient, getDisplayName} from './garminClient.js';
 import {buildStrengthWorkout} from './workoutBuilder.js';
+import {
+  transformStrengthSession,
+  type RawExerciseSetsResponse,
+  type StrengthSession,
+  type StrengthSessionMeta,
+} from './strengthSets.js';
+import {buildImportPlan} from './lift/garminImport.js';
 import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
 import {getLiftStore} from './lift/store.js';
 import {logger} from './logger.js';
@@ -142,6 +150,93 @@ function audited<F extends (...args: any[]) => any>(
   }) as F;
 }
 
+/** Loose view of the activity-detail payload fields the transform needs. */
+interface ActivityDetail {
+  activityId: number;
+  activityName: string;
+  activityTypeDTO?: {typeKey?: string};
+  summaryDTO?: {
+    startTimeLocal?: string;
+    duration?: number;
+    movingDuration?: number;
+    calories?: number;
+    averageHR?: number;
+    maxHR?: number;
+    minHR?: number;
+  };
+}
+
+/** Loose view of an activity-list row used to resolve a session by date. */
+interface ActivityListItem {
+  activityId: number;
+  startTimeLocal?: string;
+  activityType?: {typeKey?: string};
+}
+
+/** Local calendar date (YYYY-MM-DD) from a Garmin timestamp (space or T). */
+function localDate(timestamp: string | undefined): string | undefined {
+  return timestamp?.slice(0, 10);
+}
+
+/**
+ * Resolve a strength activity id: explicit id wins; otherwise pick the
+ * newest strength_training session (optionally constrained to `date`) from
+ * the recent activity list. Returns undefined when none matches.
+ */
+async function resolveStrengthActivityId(
+  gc: Awaited<ReturnType<typeof getClient>>,
+  activityId?: number,
+  date?: string,
+): Promise<number | undefined> {
+  if (activityId !== undefined) return activityId;
+  const activities = (await gc.getActivities(
+    0,
+    STRENGTH_SETS.resolveScanLimit,
+  )) as unknown as ActivityListItem[];
+  const match = activities.find(
+    a =>
+      a.activityType?.typeKey === STRENGTH_SETS.strengthActivityTypeKey &&
+      (date === undefined || localDate(a.startTimeLocal) === date),
+  );
+  return match?.activityId;
+}
+
+/**
+ * Fetch and transform a strength session by activity id: activity detail for
+ * conditioning metadata plus the per-set breakdown (no library wrapper for
+ * the latter — public get() escape hatch). Returns null when the activity
+ * carries no per-set strength data. Shared by the review and import tools.
+ */
+async function loadStrengthSession(
+  gc: Awaited<ReturnType<typeof getClient>>,
+  id: number,
+): Promise<StrengthSession | null> {
+  const detail = (await gc.getActivity({
+    activityId: id,
+  })) as unknown as ActivityDetail;
+  const url = `${GARMIN_API.base}${GARMIN_API.activitySetsPathPrefix}${id}${GARMIN_API.activitySetsPathSuffix}`;
+  const raw = await gc.get<RawExerciseSetsResponse>(url);
+  if (!raw?.exerciseSets || raw.exerciseSets.length === 0) return null;
+  return transformStrengthSession(raw, metaFromDetail(detail));
+}
+
+/** Build the transform's session metadata from an activity-detail payload. */
+function metaFromDetail(detail: ActivityDetail): StrengthSessionMeta {
+  const s = detail.summaryDTO ?? {};
+  return {
+    activityId: detail.activityId,
+    name: detail.activityName,
+    date: localDate(s.startTimeLocal) ?? todayDateString(),
+    startTime: s.startTimeLocal ?? null,
+    avgHR: s.averageHR ?? null,
+    maxHR: s.maxHR ?? null,
+    minHR: s.minHR ?? null,
+    calories: s.calories ?? null,
+    durationSeconds: s.duration ?? null,
+    movingDurationSeconds: s.movingDuration ?? null,
+  };
+}
+
 export function createServer(): McpServer {
   const server = new McpServer({
     name: SERVER_INFO.name,
@@ -218,6 +313,112 @@ export function createServer(): McpServer {
       const gc = await getClient();
       const activity = await gc.getActivity({activityId});
       return formatResult(activity);
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetStrengthSets,
+    {
+      description:
+        "Get the per-set strength breakdown of a lifting session for post-workout review: each exercise with its sets (reps, weight in lb, rest), plus conditioning context (duration, avg/max HR, total rest, calories). Reps and weight are validated on the watch during the set, so this is the primary lifting record. Low-confidence auto-detected exercises are flagged to verify. Pass an activityId, a date (picks that day's strength session), or neither (newest strength session)",
+      inputSchema: {
+        activityId: z
+          .number()
+          .optional()
+          .describe('Specific activity id (from get-activities)'),
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe(
+            "Date in YYYY-MM-DD format; resolves to that day's strength session",
+          ),
+      },
+    },
+    audited(ToolName.GetStrengthSets, async ({activityId, date}) => {
+      const gc = await getClient();
+      const id = await resolveStrengthActivityId(gc, activityId, date);
+      if (id === undefined) {
+        return formatResult({
+          session: null,
+          message:
+            date !== undefined
+              ? `No strength session found on ${date}.`
+              : 'No recent strength session found.',
+        });
+      }
+      const session = await loadStrengthSession(gc, id);
+      if (session === null) {
+        return formatResult({
+          session: null,
+          activityId: id,
+          message: `Activity ${id} has no per-set strength data.`,
+        });
+      }
+      return formatResult(session);
+    }),
+  );
+
+  server.registerTool(
+    ToolName.ConfirmStrengthSession,
+    {
+      description:
+        'Commit a reviewed Garmin strength session into the lift log so it counts toward progression. Run get-strength-sets first to review the per-set data, then call this to import it. Each exercise becomes a logged session (source: garmin) keyed by the activity id, so re-confirming the same session never double-imports. Garmin data supersedes any manual entry on the same date+lift (the overwritten entry is reported). Exercises outside the configured vocabulary are imported under a normalized name and flagged',
+      inputSchema: {
+        activityId: z
+          .number()
+          .describe(
+            'The strength activity id to import (from get-strength-sets)',
+          ),
+      },
+    },
+    audited(ToolName.ConfirmStrengthSession, async ({activityId}) => {
+      const gc = await getClient();
+      const session = await loadStrengthSession(gc, activityId);
+      if (session === null) {
+        return formatResult({
+          imported: null,
+          activityId,
+          message: `Activity ${activityId} has no per-set strength data to import.`,
+        });
+      }
+      const plan = buildImportPlan(session);
+      const store = getLiftStore();
+      const imported = plan.sessions.map(s => {
+        const {session: stored, replaced} = store.upsertGarminSession({
+          date: s.date,
+          lift: s.lift,
+          sets: s.sets,
+          activityId: s.activityId,
+        });
+        // Only manual rows count as "superseded"; replacing this activity's
+        // own prior import is just an idempotent re-confirm.
+        const supersededManual = replaced.filter(r => r.source === 'manual');
+        return {
+          id: stored.id,
+          lift: stored.lift,
+          garminKey: s.garminKey,
+          mapped: s.mapped,
+          source: stored.source,
+          sets: stored.sets,
+          topSetWeight: topSetWeight(stored.sets),
+          totalReps: totalReps(stored.sets),
+          supersededManual: supersededManual.map(r => ({
+            id: r.id,
+            date: r.date,
+            topSetWeight: topSetWeight(r.sets),
+          })),
+        };
+      });
+      return formatResult({
+        activityId,
+        date: session.date,
+        name: session.name,
+        importedCount: imported.length,
+        imported,
+        unmapped: plan.unmapped,
+        lowConfidenceFlags: session.lowConfidenceFlags,
+      });
     }),
   );
 
@@ -560,6 +761,7 @@ export function createServer(): McpServer {
           date: session.date,
           topSetWeight: topSetWeight(session.sets),
           totalReps: totalReps(session.sets),
+          source: session.source,
         }));
       const latest = sessions[0];
       const assessment = assessProgression(latest);

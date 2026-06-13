@@ -10,10 +10,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
-/** One working set within a session. */
+/** Where a session's data came from: hand-logged vs imported from a watch. */
+export type LiftSource = 'manual' | 'garmin';
+
+/**
+ * One working set within a session. `restSec` is preserved on Garmin imports
+ * (the watch records rest per set); manual entries usually omit it.
+ */
 export interface LiftSet {
   weight: number;
   reps: number;
+  restSec?: number;
 }
 
 /** A logged training session for a single lift. */
@@ -24,6 +31,10 @@ export interface LiftSession {
   sets: LiftSet[];
   note?: string;
   createdAt: number;
+  /** 'manual' for hand-logged, 'garmin' for watch imports. */
+  source: LiftSource;
+  /** Garmin activity id this was imported from (dedupe key); manual = null. */
+  activityId?: number;
 }
 
 /** Fields supplied when inserting a session (id and createdAt are assigned). */
@@ -31,6 +42,15 @@ export interface NewLiftSession {
   date: string;
   lift: string;
   sets: LiftSet[];
+  note?: string;
+}
+
+/** Fields for importing a reviewed Garmin session into the unified log. */
+export interface GarminImportSession {
+  date: string;
+  lift: string;
+  sets: LiftSet[];
+  activityId: number;
   note?: string;
 }
 
@@ -45,7 +65,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   lift TEXT NOT NULL,
   sets TEXT NOT NULL,
   note TEXT,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  activity_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_lift_date
   ON sessions (lift, date DESC, created_at DESC);
@@ -54,6 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_lift_date
 type Row = Record<string, string | number | null>;
 
 function rowToSession(row: Row): LiftSession {
+  const activityId = row['activity_id'] as number | null;
   return {
     id: row['id'] as string,
     date: row['date'] as string,
@@ -61,6 +84,8 @@ function rowToSession(row: Row): LiftSession {
     sets: JSON.parse(row['sets'] as string) as LiftSet[],
     note: (row['note'] as string | null) ?? undefined,
     createdAt: row['created_at'] as number,
+    source: ((row['source'] as string | null) ?? 'manual') as LiftSource,
+    activityId: activityId ?? undefined,
   };
 }
 
@@ -72,9 +97,33 @@ export class LiftDb {
     this.db = new DatabaseSync(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(SCHEMA);
+    this.migrate();
   }
 
-  /** Inserts a session and returns the stored row. */
+  /**
+   * Bring an older DB (pre-import schema) up to date: SQLite has no
+   * ADD COLUMN IF NOT EXISTS, so add the source/activity_id columns only
+   * when absent. New DBs already have them from SCHEMA.
+   */
+  private migrate(): void {
+    const columns = (
+      this.db.prepare('PRAGMA table_info(sessions)').all() as Row[]
+    ).map(row => row['name'] as string);
+    if (!columns.includes('source')) {
+      this.db.exec(
+        "ALTER TABLE sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+      );
+    }
+    if (!columns.includes('activity_id')) {
+      this.db.exec('ALTER TABLE sessions ADD COLUMN activity_id INTEGER');
+    }
+    this.db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_activity_lift
+         ON sessions (activity_id, lift) WHERE activity_id IS NOT NULL`,
+    );
+  }
+
+  /** Inserts a manual (hand-logged) session and returns the stored row. */
   insertSession(session: NewLiftSession): LiftSession {
     const stored: LiftSession = {
       id: randomUUID(),
@@ -83,11 +132,13 @@ export class LiftDb {
       sets: session.sets,
       note: session.note,
       createdAt: nowSeconds(),
+      source: 'manual',
+      activityId: undefined,
     };
     this.db
       .prepare(
-        `INSERT INTO sessions (id, date, lift, sets, note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, date, lift, sets, note, created_at, source, activity_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'manual', NULL)`,
       )
       .run(
         stored.id,
@@ -98,6 +149,62 @@ export class LiftDb {
         stored.createdAt,
       );
     return stored;
+  }
+
+  /**
+   * Imports a reviewed Garmin session into the unified log. Garmin is the
+   * source of truth, so any existing rows for the same lift that this import
+   * supersedes are replaced: the same (activityId, lift) — idempotent
+   * re-import — and any colliding entry on the same date+lift (a manual log
+   * or a different activity). Returns the stored row plus the replaced rows
+   * so the caller can note manual entries that were overwritten.
+   */
+  upsertGarminSession(session: GarminImportSession): {
+    session: LiftSession;
+    replaced: LiftSession[];
+  } {
+    const replaced = (
+      this.db
+        .prepare(
+          `SELECT * FROM sessions
+           WHERE lift = ? COLLATE NOCASE
+             AND (activity_id = ? OR date = ?)`,
+        )
+        .all(session.lift, session.activityId, session.date) as Row[]
+    ).map(rowToSession);
+    this.db
+      .prepare(
+        `DELETE FROM sessions
+         WHERE lift = ? COLLATE NOCASE
+           AND (activity_id = ? OR date = ?)`,
+      )
+      .run(session.lift, session.activityId, session.date);
+
+    const stored: LiftSession = {
+      id: randomUUID(),
+      date: session.date,
+      lift: session.lift,
+      sets: session.sets,
+      note: session.note,
+      createdAt: nowSeconds(),
+      source: 'garmin',
+      activityId: session.activityId,
+    };
+    this.db
+      .prepare(
+        `INSERT INTO sessions (id, date, lift, sets, note, created_at, source, activity_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'garmin', ?)`,
+      )
+      .run(
+        stored.id,
+        stored.date,
+        stored.lift,
+        JSON.stringify(stored.sets),
+        stored.note ?? null,
+        stored.createdAt,
+        session.activityId,
+      );
+    return {session: stored, replaced};
   }
 
   /**

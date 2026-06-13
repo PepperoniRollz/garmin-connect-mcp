@@ -123,6 +123,8 @@ export enum ToolName {
   GetUserSettings = 'get-user-settings',
   GetActivities = 'get-activities',
   GetActivityDetails = 'get-activity-details',
+  GetStrengthSets = 'get-strength-sets',
+  ConfirmStrengthSession = 'confirm-strength-session',
   CountActivities = 'count-activities',
   GetSteps = 'get-steps',
   GetHeartRate = 'get-heart-rate',
@@ -152,6 +154,39 @@ export const GARMIN_API = {
   dailySummaryPath: '/usersummary-service/usersummary/daily/',
   /** POST {date} here (suffixed with the workout id) to put a workout on the calendar. */
   workoutSchedulePath: '/workout-service/schedule/',
+  /**
+   * Per-set strength breakdown the Connect app shows: build the URL as
+   * `${activitySetsPathPrefix}${activityId}${activitySetsPathSuffix}`. No
+   * library wrapper exists; called via the public get() escape hatch.
+   * Returns {activityId, exerciseSets:[{exercises, duration, repetitionCount,
+   * weight (grams), setType: ACTIVE|REST, ...}]}.
+   */
+  activitySetsPathPrefix: '/activity-service/activity/',
+  activitySetsPathSuffix: '/exerciseSets',
+} as const;
+
+/**
+ * Strength-sets transform parameters. The watch's per-set exercise guess
+ * carries a `probability`; below this percent (or an UNKNOWN name/category)
+ * the set is flagged "verify" rather than trusted silently. Weight arrives
+ * as integer grams and is converted to pounds (the owner's display unit)
+ * using the same factor as the workout payloads, snapped to the nearest
+ * `weightStepLb` to match the Connect app's display and shed kg↔lb
+ * round-trip noise; the raw grams are always retained alongside.
+ */
+export const STRENGTH_SETS = {
+  /** activityType.typeKey identifying a strength session in the activity list. */
+  strengthActivityTypeKey: 'strength_training',
+  /** How many recent activities to scan when resolving a session by date. */
+  resolveScanLimit: 30,
+  activeSetType: 'ACTIVE',
+  restSetType: 'REST',
+  lowConfidencePercent: 90,
+  unknownToken: 'UNKNOWN',
+  /** Grams per pound (matches STRENGTH_WORKOUT.weightUnit.pound.factor). */
+  gramsPerPound: 453.59237,
+  /** Pound granularity the converted load is snapped to. */
+  weightStepLb: 0.5,
 } as const;
 
 /**
