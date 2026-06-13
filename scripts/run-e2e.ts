@@ -72,6 +72,20 @@ const serverEnv: NodeJS.ProcessEnv = {
   LOG_LEVEL: 'warn',
 };
 
+// Pure transform/import unit suites: no server or Garmin account needed.
+console.log('e2e: running strength-sets transform suite');
+const strengthSetsCode = await runToCompletion(
+  'npx',
+  ['tsx', 'scripts/strength-sets-test.ts'],
+  process.env,
+);
+console.log('e2e: running strength-import suite');
+const strengthImportCode = await runToCompletion(
+  'npx',
+  ['tsx', 'scripts/strength-import-test.ts'],
+  process.env,
+);
+
 console.log('e2e: starting server in HTTP mode...');
 const server = run('npx', ['tsx', 'src/index.ts'], serverEnv);
 
@@ -99,7 +113,14 @@ try {
     {...process.env, OAUTH_TEST_TOKEN_FILE: tokenSavePath},
   );
 
-  exitCode = oauthCode === 0 && sessionCode === 0 && liftCode === 0 ? 0 : 1;
+  exitCode =
+    strengthSetsCode === 0 &&
+    strengthImportCode === 0 &&
+    oauthCode === 0 &&
+    sessionCode === 0 &&
+    liftCode === 0
+      ? 0
+      : 1;
   console.log(
     exitCode === 0 ? 'e2e: ALL SUITES PASSED' : 'e2e: FAILURES (see above)',
   );

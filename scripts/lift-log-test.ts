@@ -52,9 +52,18 @@ for (const name of [
   'get-lift-progress',
   'update-lift',
   'delete-lift',
+  'get-strength-sets',
+  'confirm-strength-session',
 ]) {
   check(`${name} is registered`, byName.has(name));
 }
+const confirmProps = byName.get('confirm-strength-session')?.inputSchema?.[
+  'properties'
+] as Record<string, unknown> | undefined;
+check(
+  'confirm-strength-session schema requires activityId',
+  confirmProps?.['activityId'] !== undefined,
+);
 const deleteProps = byName.get('delete-lift')?.inputSchema?.['properties'] as
   | Record<string, unknown>
   | undefined;
