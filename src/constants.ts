@@ -125,6 +125,7 @@ export enum ToolName {
   GetActivityDetails = 'get-activity-details',
   GetStrengthSets = 'get-strength-sets',
   ConfirmStrengthSession = 'confirm-strength-session',
+  GetTrainingStatus = 'get-training-status',
   CountActivities = 'count-activities',
   GetSteps = 'get-steps',
   GetHeartRate = 'get-heart-rate',
@@ -154,6 +155,13 @@ export const GARMIN_API = {
   dailySummaryPath: '/usersummary-service/usersummary/daily/',
   /** POST {date} here (suffixed with the workout id) to put a workout on the calendar. */
   workoutSchedulePath: '/workout-service/schedule/',
+  /**
+   * Aggregated training status (suffix with a YYYY-MM-DD date). Returns the
+   * most-recent training-status, training-load-balance, and VO2max DTOs,
+   * each keyed by deviceId. A Forerunner-965-class metric; pre-upgrade
+   * dates / unsupported devices return an empty payload.
+   */
+  trainingStatusPath: '/metrics-service/metrics/trainingstatus/aggregated/',
   /**
    * Per-set strength breakdown the Connect app shows: build the URL as
    * `${activitySetsPathPrefix}${activityId}${activitySetsPathSuffix}`. No

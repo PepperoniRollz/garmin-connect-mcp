@@ -85,6 +85,12 @@ const strengthImportCode = await runToCompletion(
   ['tsx', 'scripts/strength-import-test.ts'],
   process.env,
 );
+console.log('e2e: running training-status transform suite');
+const trainingStatusCode = await runToCompletion(
+  'npx',
+  ['tsx', 'scripts/training-status-test.ts'],
+  process.env,
+);
 
 console.log('e2e: starting server in HTTP mode...');
 const server = run('npx', ['tsx', 'src/index.ts'], serverEnv);
@@ -116,6 +122,7 @@ try {
   exitCode =
     strengthSetsCode === 0 &&
     strengthImportCode === 0 &&
+    trainingStatusCode === 0 &&
     oauthCode === 0 &&
     sessionCode === 0 &&
     liftCode === 0

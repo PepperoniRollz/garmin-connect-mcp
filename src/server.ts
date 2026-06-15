@@ -28,6 +28,7 @@ import {
   type StrengthSessionMeta,
 } from './strengthSets.js';
 import {buildImportPlan} from './lift/garminImport.js';
+import {transformTrainingStatus} from './trainingStatus.js';
 import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
 import {getLiftStore} from './lift/store.js';
 import {logger} from './logger.js';
@@ -419,6 +420,29 @@ export function createServer(): McpServer {
         unmapped: plan.unmapped,
         lowConfidenceFlags: session.lowConfidenceFlags,
       });
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetTrainingStatus,
+    {
+      description:
+        "Get the day's training-status summary (Forerunner 965-class metric): training status + feedback and fitness trend, acute/chronic training load with the acute:chronic workload ratio (ACWR) over/under-training signal, VO2max (precise + rounded) with fitness age, and monthly load balance (aerobic low/high/anaerobic vs target ranges). Returns available:false for dates/devices without records; reports a 'warming up' note instead of a status when the device lacks recent history",
+      inputSchema: {
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe('Date in YYYY-MM-DD format (default: today)'),
+      },
+    },
+    audited(ToolName.GetTrainingStatus, async ({date}) => {
+      const gc = await getClient();
+      const calendarDate = date ?? todayDateString();
+      // No library wrapper for this endpoint; use the public get() escape hatch.
+      const url = `${GARMIN_API.base}${GARMIN_API.trainingStatusPath}${calendarDate}`;
+      const raw = await gc.get<unknown>(url);
+      return formatResult(transformTrainingStatus(raw, calendarDate));
     }),
   );
 
