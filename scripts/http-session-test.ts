@@ -53,13 +53,14 @@ check('initialize issues Mcp-Session-Id', sessionId !== undefined, sessionId);
 const {tools} = await client.listTools();
 check(
   'tools/list on session returns tools',
-  tools.length === 24,
+  tools.length === 25,
   `${tools.length} tools`,
 );
 
 // 2b. Wellness tool schemas (synthetic fixture check, no Garmin account).
 const dailySummary = tools.find(tool => tool.name === 'get-daily-summary');
 const condensedSleep = tools.find(tool => tool.name === 'get-sleep');
+const trainingStatus = tools.find(tool => tool.name === 'get-training-status');
 const dateProperty = (tool: typeof dailySummary) =>
   (tool?.inputSchema?.['properties'] as Record<string, unknown> | undefined)?.[
     'date'
@@ -71,6 +72,10 @@ check(
 check(
   'get-sleep registered with optional date schema',
   condensedSleep !== undefined && dateProperty(condensedSleep) !== undefined,
+);
+check(
+  'get-training-status registered with optional date schema',
+  trainingStatus !== undefined && dateProperty(trainingStatus) !== undefined,
 );
 
 // 2c. Garmin workout tool schemas (synthetic fixture check, no Garmin
