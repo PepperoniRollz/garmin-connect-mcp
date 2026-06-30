@@ -28,6 +28,7 @@ import {
   type StrengthSessionMeta,
 } from './strengthSets.js';
 import {buildImportPlan} from './lift/garminImport.js';
+import {transformNutrition} from './nutrition.js';
 import {transformTrainingStatus} from './trainingStatus.js';
 import {LiftSession, LiftSet, NewLiftSession} from './lift/db.js';
 import {getLiftStore} from './lift/store.js';
@@ -39,11 +40,13 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
  * Fields picked from the daily-summary payload (91 keys total; the rest are
  * goal/internal bookkeeping). Calories are kilocalories (dietary Calories).
  *
- * Nutrition: consumedKilocalories syncs from MyFitnessPal;
+ * Nutrition: consumedKilocalories carries the day's intake;
  * includesCalorieConsumedData flags whether intake was logged that day.
  * remainingKilocalories = netCalorieGoal - consumed + activeKilocalories
  * (Garmin credits activity back against the goal). Macro grams are NOT in
- * this payload — MFP does not propagate them to Garmin.
+ * this payload, and the consumed total here can lag or disagree with the
+ * food log — for intake (calories AND protein/carb/fat grams) prefer
+ * get-nutrition, which reads the authoritative /nutrition-service food log.
  */
 const DAILY_SUMMARY_FIELDS = [
   'calendarDate',
@@ -627,6 +630,30 @@ export function createServer(): McpServer {
         picked[field] = summary[field] ?? null;
       }
       return formatResult(picked);
+    }),
+  );
+
+  server.registerTool(
+    ToolName.GetNutrition,
+    {
+      description:
+        "The day's logged nutrition from Garmin's native food log: consumed calories and protein/carb/fat grams, daily goals, and a per-meal breakdown (macros, micros, and each logged food). `hasMacros` is true when foods were logged itemized (macro grams present) and false on calorie-only days, where the macro grams are null rather than zero. This is the authoritative intake source — prefer it over get-daily-summary's consumedKilocalories for both calories and macros",
+      inputSchema: {
+        date: z
+          .string()
+          .regex(DATE_REGEX)
+          .optional()
+          .describe('Date in YYYY-MM-DD format (default: today)'),
+      },
+    },
+    audited(ToolName.GetNutrition, async ({date}) => {
+      const gc = await getClient();
+      const calendarDate = date ?? todayDateString();
+      // Date is a PATH segment here (query-param variants return 405). No
+      // library wrapper exists; use the public get() escape hatch.
+      const url = `${GARMIN_API.base}${GARMIN_API.nutritionFoodLogPath}${calendarDate}`;
+      const raw = await gc.get<unknown>(url);
+      return formatResult(transformNutrition(raw, calendarDate));
     }),
   );
 

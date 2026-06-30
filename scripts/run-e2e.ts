@@ -91,6 +91,12 @@ const trainingStatusCode = await runToCompletion(
   ['tsx', 'scripts/training-status-test.ts'],
   process.env,
 );
+console.log('e2e: running nutrition transform suite');
+const nutritionCode = await runToCompletion(
+  'npx',
+  ['tsx', 'scripts/nutrition-test.ts'],
+  process.env,
+);
 
 console.log('e2e: starting server in HTTP mode...');
 const server = run('npx', ['tsx', 'src/index.ts'], serverEnv);
@@ -123,6 +129,7 @@ try {
     strengthSetsCode === 0 &&
     strengthImportCode === 0 &&
     trainingStatusCode === 0 &&
+    nutritionCode === 0 &&
     oauthCode === 0 &&
     sessionCode === 0 &&
     liftCode === 0

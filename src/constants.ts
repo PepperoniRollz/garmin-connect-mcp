@@ -136,6 +136,7 @@ export enum ToolName {
   GetWorkouts = 'get-workouts',
   GetGolfSummary = 'get-golf-summary',
   GetDailySummary = 'get-daily-summary',
+  GetNutrition = 'get-nutrition',
   GetSleep = 'get-sleep',
   LogLift = 'log-lift',
   GetLiftHistory = 'get-lift-history',
@@ -153,6 +154,15 @@ export enum ToolName {
 export const GARMIN_API = {
   base: 'https://connectapi.garmin.com',
   dailySummaryPath: '/usersummary-service/usersummary/daily/',
+  /**
+   * Native in-Garmin food log (suffix with a YYYY-MM-DD date as a PATH
+   * segment, not a query param). Returns dailyNutritionContent (calories +
+   * carb/fat/protein grams on itemized days), dailyNutritionGoals, and
+   * mealDetails. The authoritative intake source — preferred over the daily
+   * summary's consumedKilocalories, which can lag/disagree. No library
+   * wrapper exists; called via the public get() escape hatch.
+   */
+  nutritionFoodLogPath: '/nutrition-service/food/logs/',
   /** POST {date} here (suffixed with the workout id) to put a workout on the calendar. */
   workoutSchedulePath: '/workout-service/schedule/',
   /**
