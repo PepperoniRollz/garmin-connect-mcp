@@ -54,12 +54,17 @@ export function createLoginRouter(
       const passwordOk = await bcrypt.compare(password, ownerPasswordHash);
       if (!passwordOk) {
         logger.info('audit', {event: AuditEvent.LoginFailure, ip: req.ip});
+        // Re-render with the same consent details so the owner still sees
+        // which scopes they are about to grant on the retry.
+        const pending = provider.describePendingAuthorization(pendingId);
         res
           .status(401)
           .type('html')
           .send(
             renderLoginPage({
               pendingId,
+              clientName: pending?.clientName,
+              scopes: pending?.scopes ?? [],
               errorMessage: 'Incorrect password.',
             }),
           );

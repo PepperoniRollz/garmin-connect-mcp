@@ -204,7 +204,9 @@ export async function runHttp(config: AppConfig): Promise<void> {
         }
       };
 
-      const server = createServer();
+      // Write tools are gated per request on the token's garmin:write scope;
+      // the bearer middleware above only proves the token is valid.
+      const server = createServer({enforceScopes: true});
       await server.connect(newTransport);
       entry = {transport: newTransport, lastActivityMs: Date.now()};
     }

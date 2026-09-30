@@ -16,7 +16,10 @@ Runs in two modes from one codebase:
 ## Tools
 
 Date inputs are optional `YYYY-MM-DD` strings defaulting to today (or last
-night for sleep tools).
+night for sleep tools). Tools marked **Write** change state (the lift log or
+your Garmin workouts); in HTTP mode they require an access token that
+carries the `garmin:write` OAuth scope (see
+[OAuth scopes](#oauth-scopes)). Read tools need only `garmin:read`.
 
 | Tool | Returns | Units / payload notes |
 |---|---|---|
@@ -104,6 +107,24 @@ reverse proxy; only you can authorize access, via a single owner password.
                                             Garmin Connect API
 ```
 
+### OAuth scopes
+
+The authorization server advertises two scopes (`scopes_supported` in the
+RFC 8414 / RFC 9728 metadata):
+
+| Scope | Grants |
+|---|---|
+| `garmin:read` | Every read tool. The baseline: always included in a grant, and the default when a client requests no scope at all. |
+| `garmin:write` | The **Write** tools (`log-lift`, `update-lift`, `delete-lift`, `confirm-strength-session`, `create-workout`, `delete-workout`). Only granted when the client explicitly requests it. |
+
+Scopes are enforced per tool call: a read-only token calling a write tool
+gets an `isError` result (`Insufficient scope: … requires the garmin:write
+OAuth scope`) and nothing is written. Unknown scopes are refused with
+`invalid_scope`. The login page lists the scopes being requested so you can
+see when a client is asking for write access. Tokens issued before scopes
+were enforced are treated as read-only; reconnect the client (requesting
+`garmin:write`) to use write tools again.
+
 ### Deploy (Docker Compose + Caddy)
 
 1. **DNS**: point a subdomain (e.g. `garmin-mcp.example.com`) at your
@@ -183,6 +204,9 @@ variables (Docker Compose `env_file:`, systemd `EnvironmentFile=`, shell).
   or the OS credential store (stdio). The owner password exists only as a
   bcrypt hash. OAuth tokens and codes are stored as SHA-256 hashes in
   SQLite and survive restarts; refresh tokens rotate on use.
+- **Least privilege**: write tools are gated per call on the `garmin:write`
+  scope, so a connector granted only `garmin:read` can never log, edit or
+  delete anything (see [OAuth scopes](#oauth-scopes)).
 - **Never expose HTTP mode without auth.** See [SECURITY.md](SECURITY.md).
 - **Datacenter-IP caveat**: Garmin throttles (429) fresh logins from cloud
   provider IPs. Seed the deployed token cache with tokens minted on a
@@ -198,7 +222,7 @@ npm run dev        # run from source (tsx)
 npm run build      # compile to dist/
 npm run typecheck  # tsc --noEmit (src + scripts)
 npm run lint       # gts (Google TypeScript style)
-npm test           # e2e: OAuth flow + session lifecycle, no Garmin account needed
+npm test           # e2e: OAuth flow + scope enforcement + session lifecycle + lift log, no Garmin account needed
 ```
 
 Architecture and roadmap: [docs/SPEC.md](docs/SPEC.md).

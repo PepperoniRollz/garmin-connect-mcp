@@ -2,8 +2,8 @@
  * End-to-end test orchestrator (used by `npm test` and CI).
  *
  * Starts the server in HTTP mode with synthetic credentials, waits for
- * /healthz, then runs the OAuth flow suite and the session lifecycle suite
- * against it. No Garmin account is contacted: the suites stop at tools/list.
+ * /healthz, then runs the OAuth flow, scope enforcement, session lifecycle
+ * and lift-log suites against it. No Garmin account is contacted: the suites stop at tools/list.
  */
 import {spawn, ChildProcess} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -111,6 +111,13 @@ try {
     {...process.env, OAUTH_TEST_PASSWORD: OWNER_PASSWORD},
   );
 
+  console.log('e2e: running scope enforcement suite');
+  const scopeCode = await runToCompletion(
+    'npx',
+    ['tsx', 'scripts/scope-test.ts', BASE_URL],
+    {...process.env, OAUTH_TEST_PASSWORD: OWNER_PASSWORD},
+  );
+
   console.log('e2e: running session lifecycle suite');
   const sessionCode = await runToCompletion(
     'npx',
@@ -131,6 +138,7 @@ try {
     trainingStatusCode === 0 &&
     nutritionCode === 0 &&
     oauthCode === 0 &&
+    scopeCode === 0 &&
     sessionCode === 0 &&
     liftCode === 0
       ? 0
