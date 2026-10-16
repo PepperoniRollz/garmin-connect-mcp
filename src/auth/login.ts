@@ -21,6 +21,8 @@ const loginBodySchema = z.object({
 
 const OAUTH_QUERY_PARAM_CODE = 'code';
 const OAUTH_QUERY_PARAM_STATE = 'state';
+const EXPIRED_MESSAGE =
+  'This sign-in link has expired. Return to the client and connect again.';
 
 export function createLoginRouter(
   provider: OwnerAuthorizationProvider,
@@ -57,14 +59,19 @@ export function createLoginRouter(
         // Re-render with the same consent details so the owner still sees
         // which scopes they are about to grant on the retry.
         const pending = provider.describePendingAuthorization(pendingId);
+        if (pending === undefined) {
+          // Expired or consumed: a retry form could never succeed.
+          res.status(400).type('html').send(renderErrorPage(EXPIRED_MESSAGE));
+          return;
+        }
         res
           .status(401)
           .type('html')
           .send(
             renderLoginPage({
               pendingId,
-              clientName: pending?.clientName,
-              scopes: pending?.scopes ?? [],
+              clientName: pending.clientName,
+              scopes: pending.scopes,
               errorMessage: 'Incorrect password.',
             }),
           );
@@ -74,14 +81,7 @@ export function createLoginRouter(
       const issued = provider.issueAuthorizationCode(pendingId);
       if (issued === undefined) {
         // Expired or replayed pending id; make the user restart the flow.
-        res
-          .status(400)
-          .type('html')
-          .send(
-            renderErrorPage(
-              'This sign-in link has expired. Return to the client and connect again.',
-            ),
-          );
+        res.status(400).type('html').send(renderErrorPage(EXPIRED_MESSAGE));
         return;
       }
 

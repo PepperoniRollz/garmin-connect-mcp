@@ -26,7 +26,7 @@ import {
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 
-import {AuditEvent, OAUTH} from '../constants.js';
+import {AuditEvent, isSupportedScope, OAUTH} from '../constants.js';
 import {logger} from '../logger.js';
 import {AuthDb, newOpaqueToken, nowSeconds, TokenKind} from './db.js';
 import {
@@ -38,7 +38,14 @@ import {isAllowedRedirectUri} from './redirectUris.js';
 
 const BEARER_TOKEN_TYPE = 'Bearer';
 
-const SUPPORTED_SCOPES: readonly string[] = OAUTH.scopesSupported;
+/**
+ * The SDK splits the raw `scope` parameter on single spaces, so an empty
+ * value or doubled/leading/trailing spaces yield '' entries. Those are
+ * separator noise, not scope tokens (RFC 6749 §3.3), so drop them.
+ */
+function scopeTokens(scopes: string[]): string[] {
+  return scopes.filter(scope => scope !== '');
+}
 
 /**
  * Scopes a grant will carry for an authorization request: unknown scopes
@@ -47,11 +54,12 @@ const SUPPORTED_SCOPES: readonly string[] = OAUTH.scopesSupported;
  * ever granted when the client explicitly asks for it.
  */
 function resolveRequestedScopes(requested: string[]): string[] {
-  const unknown = requested.filter(scope => !SUPPORTED_SCOPES.includes(scope));
+  const tokens = scopeTokens(requested);
+  const unknown = tokens.filter(scope => !isSupportedScope(scope));
   if (unknown.length > 0) {
     throw new InvalidScopeError(`Unsupported scope: ${unknown.join(' ')}`);
   }
-  return [...new Set<string>([...OAUTH.defaultScopes, ...requested])];
+  return [...new Set<string>([...OAUTH.defaultScopes, ...tokens])];
 }
 
 /**
@@ -184,6 +192,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     const tokens = this.issueTokens(
       client.client_id,
       record.scopes,
+      record.scopes,
       record.resource,
     );
     logger.info('audit', {
@@ -203,18 +212,19 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
       throw new InvalidGrantError('Invalid or expired refresh token');
     }
     const grantedScopes = effectiveScopes(record.scopes);
-    if (
-      scopes !== undefined &&
-      scopes.some(scope => !grantedScopes.includes(scope))
-    ) {
-      throw new InvalidGrantError('Requested scopes exceed the original grant');
+    const requested = scopes !== undefined ? scopeTokens(scopes) : [];
+    if (requested.some(scope => !grantedScopes.includes(scope))) {
+      throw new InvalidScopeError('Requested scopes exceed the original grant');
     }
     // OAuth 2.1 refresh token rotation: the presented token is consumed.
     this.db.deleteToken(refreshToken);
 
+    // RFC 6749 §6: a narrower request scopes only the new access token; the
+    // rotated refresh token keeps the full original grant.
     const tokens = this.issueTokens(
       client.client_id,
-      scopes ?? grantedScopes,
+      requested.length > 0 ? requested : grantedScopes,
+      grantedScopes,
       record.resource,
     );
     logger.info('audit', {
@@ -280,6 +290,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
   private issueTokens(
     clientId: string,
     scopes: string[],
+    refreshScopes: string[],
     resource?: string,
   ): OAuthTokens {
     const accessToken = newOpaqueToken();
@@ -295,7 +306,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     this.db.insertToken(refreshToken, {
       kind: TokenKind.Refresh,
       clientId,
-      scopes,
+      scopes: refreshScopes,
       resource,
       expiresAt: now + OAUTH.refreshTokenTtlSeconds,
     });

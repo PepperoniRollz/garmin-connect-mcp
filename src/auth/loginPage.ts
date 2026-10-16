@@ -5,6 +5,7 @@
  */
 import {
   AuthRoutePath,
+  isSupportedScope,
   OAUTH_SCOPE_DESCRIPTIONS,
   OAuthScope,
 } from '../constants.js';
@@ -23,15 +24,11 @@ export interface LoginPageOptions {
   errorMessage?: string;
 }
 
-function isKnownScope(scope: string): scope is OAuthScope {
-  return Object.values(OAuthScope).includes(scope as OAuthScope);
-}
-
 /** One list item per requested scope; unknown scopes still render (escaped). */
 function renderScopeList(scopes: string[]): string {
   const items = scopes
     .map(scope => {
-      const description = isKnownScope(scope)
+      const description = isSupportedScope(scope)
         ? ` — ${escapeHtml(OAUTH_SCOPE_DESCRIPTIONS[scope])}`
         : '';
       return `<li><code>${escapeHtml(scope)}</code>${description}</li>`;

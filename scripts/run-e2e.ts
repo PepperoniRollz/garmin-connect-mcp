@@ -3,7 +3,9 @@
  *
  * Starts the server in HTTP mode with synthetic credentials, waits for
  * /healthz, then runs the OAuth flow, scope enforcement, session lifecycle
- * and lift-log suites against it. No Garmin account is contacted: the suites stop at tools/list.
+ * and lift-log suites against it. No Garmin account is contacted: Garmin
+ * tools are only listed, while the scope and lift-log suites call the lift
+ * tools against a throwaway LIFT_DB_PATH.
  */
 import {spawn, ChildProcess} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';

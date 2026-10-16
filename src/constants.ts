@@ -158,6 +158,11 @@ export enum OAuthScope {
   Write = 'garmin:write',
 }
 
+/** Single source of truth for "is this a scope the server issues". */
+export function isSupportedScope(scope: string): scope is OAuthScope {
+  return (OAUTH.scopesSupported as readonly string[]).includes(scope);
+}
+
 /** Plain-language meaning of each scope, shown on the owner consent page. */
 export const OAUTH_SCOPE_DESCRIPTIONS: Record<OAuthScope, string> = {
   [OAuthScope.Read]:

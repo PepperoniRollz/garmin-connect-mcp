@@ -131,6 +131,7 @@ async function authorize(
 
 interface IssuedToken {
   access_token: string;
+  refresh_token: string;
   scope?: string;
   consentHtml: string;
 }
@@ -175,6 +176,7 @@ async function obtainToken(scope: string | undefined): Promise<IssuedToken> {
   }
   const tokens = (await tokenResp.json()) as {
     access_token: string;
+    refresh_token: string;
     scope?: string;
   };
   return {...tokens, consentHtml: page.html};
@@ -361,6 +363,98 @@ check(
   'unknown scope redirects with error=invalid_scope',
   unknown.status === 302 && unknownError === 'invalid_scope',
   `status ${unknown.status} error=${unknownError}`,
+);
+
+// --- 5. Blank scope entries are separator noise, not unknown scopes ---
+const blank = await authorize(
+  '',
+  createHash('sha256').update('y').digest().toString('base64url'),
+);
+check(
+  'empty scope parameter renders the login page (defaults to read)',
+  blank.status === 200 && blank.pendingId !== '',
+  `status ${blank.status}`,
+);
+const doubled = await authorize(
+  `${READ_SCOPE}  ${WRITE_SCOPE}`,
+  createHash('sha256').update('z').digest().toString('base64url'),
+);
+check(
+  'doubled space between scopes is accepted',
+  doubled.status === 200 && doubled.html.includes(WRITE_SCOPE),
+  `status ${doubled.status}`,
+);
+
+// --- 6. Refresh scope handling (RFC 6749 §6) ---
+interface RefreshOutcome {
+  status: number;
+  body: {
+    access_token?: string;
+    refresh_token?: string;
+    scope?: string;
+    error?: string;
+  };
+}
+
+async function refresh(
+  refreshToken: string,
+  scope?: string,
+): Promise<RefreshOutcome> {
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: client.client_id,
+  });
+  if (scope !== undefined) params.set('scope', scope);
+  const res = await fetch(asMeta.token_endpoint, {
+    method: 'POST',
+    headers: {'content-type': 'application/x-www-form-urlencoded'},
+    body: params,
+  });
+  return {
+    status: res.status,
+    body: (await res.json()) as RefreshOutcome['body'],
+  };
+}
+
+const widen = await refresh(readOnly.refresh_token, WRITE_SCOPE);
+check(
+  'refresh asking beyond the grant fails with invalid_scope',
+  widen.status === 400 && widen.body.error === 'invalid_scope',
+  `status ${widen.status} error=${widen.body.error}`,
+);
+
+const narrowed = await refresh(readWrite.refresh_token, READ_SCOPE);
+check(
+  'narrowed refresh issues a read-only access token',
+  narrowed.status === 200 && narrowed.body.scope === READ_SCOPE,
+  `status ${narrowed.status} scope=${narrowed.body.scope}`,
+);
+const restored = await refresh(narrowed.body.refresh_token ?? '');
+check(
+  'rotated refresh token keeps the full original grant',
+  restored.status === 200 &&
+    restored.body.scope?.split(' ').includes(WRITE_SCOPE) === true,
+  `status ${restored.status} scope=${restored.body.scope}`,
+);
+
+// --- 7. Wrong password on an expired/unknown pending id ---
+const stale = await fetch(new URL(LOGIN_PATH, baseUrl), {
+  method: 'POST',
+  headers: {'content-type': 'application/x-www-form-urlencoded'},
+  body: new URLSearchParams({
+    pending_id: 'no-such-pending-id',
+    password: 'definitely-wrong',
+  }),
+  redirect: 'manual',
+});
+const staleHtml = await stale.text();
+check(
+  'wrong password on an expired sign-in shows the expired page, not a form',
+  stale.status === 400 &&
+    staleHtml.includes('expired') &&
+    !staleHtml.includes('name="password"'),
+  `status ${stale.status}`,
 );
 
 console.log(
