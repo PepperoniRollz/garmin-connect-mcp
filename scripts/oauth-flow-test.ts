@@ -21,6 +21,8 @@ const LOGIN_PATH = '/oauth/login';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const LOOPBACK_CALLBACK = 'http://127.0.0.1:33418/callback';
 const DISALLOWED_CALLBACK = 'https://evil.example.com/callback';
+/** Both scopes: the saved token feeds the lift-log suite, which writes. */
+const REQUESTED_SCOPE = 'garmin:read garmin:write';
 
 const baseUrl = process.argv[2] ?? DEFAULT_BASE_URL;
 const tokenSavePath = process.argv[3];
@@ -160,6 +162,7 @@ authorizeUrl.searchParams.set('redirect_uri', LOOPBACK_CALLBACK);
 authorizeUrl.searchParams.set('code_challenge', challenge);
 authorizeUrl.searchParams.set('code_challenge_method', 'S256');
 authorizeUrl.searchParams.set('state', state);
+authorizeUrl.searchParams.set('scope', REQUESTED_SCOPE);
 const authorizePage = await fetch(authorizeUrl);
 const authorizeHtml = await authorizePage.text();
 const pendingMatch = authorizeHtml.match(/name="pending_id" value="([^"]+)"/);
@@ -214,11 +217,18 @@ const tokens = (await tokenResp.json()) as {
   refresh_token: string;
   expires_in: number;
   token_type: string;
+  scope?: string;
 };
 check(
   'token exchange succeeds',
   tokenResp.status === 200 && tokens.access_token !== undefined,
   `expires_in=${tokens.expires_in}`,
+);
+check(
+  'token carries the requested scopes',
+  tokens.scope?.split(' ').sort().join(' ') ===
+    REQUESTED_SCOPE.split(' ').sort().join(' '),
+  tokens.scope,
 );
 
 // --- 10. Code is single-use ---

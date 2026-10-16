@@ -20,7 +20,8 @@ export async function runStdio(config: AppConfig): Promise<void> {
   });
   configureLiftStore(config.liftDbPath);
   configureTimezone(config.liftTimezone);
-  const server = createServer();
+  // Local subprocess with no bearer token: OAuth scopes do not apply.
+  const server = createServer({enforceScopes: false});
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.debug('stdio transport connected');

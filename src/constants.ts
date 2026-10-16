@@ -148,6 +148,63 @@ export enum ToolName {
 }
 
 /**
+ * OAuth scopes issued by the built-in authorization server. Read is the
+ * baseline every token carries; write additionally unlocks the tools that
+ * mutate state (the lift log, Garmin workouts). Least privilege: a client
+ * that never asks for write can never invoke a write tool.
+ */
+export enum OAuthScope {
+  Read = 'garmin:read',
+  Write = 'garmin:write',
+}
+
+/** Single source of truth for "is this a scope the server issues". */
+export function isSupportedScope(scope: string): scope is OAuthScope {
+  return (OAUTH.scopesSupported as readonly string[]).includes(scope);
+}
+
+/** Plain-language meaning of each scope, shown on the owner consent page. */
+export const OAUTH_SCOPE_DESCRIPTIONS: Record<OAuthScope, string> = {
+  [OAuthScope.Read]:
+    'Read your Garmin health, activity and workout data and your lift log',
+  [OAuthScope.Write]:
+    'Log, edit and delete lift sessions; create and delete Garmin workouts',
+};
+
+/**
+ * Scope every tool requires. Exhaustive over ToolName so a new tool cannot
+ * be registered without declaring whether it reads or writes.
+ */
+export const TOOL_SCOPE: Record<ToolName, OAuthScope> = {
+  [ToolName.GetUserProfile]: OAuthScope.Read,
+  [ToolName.GetUserSettings]: OAuthScope.Read,
+  [ToolName.GetActivities]: OAuthScope.Read,
+  [ToolName.GetActivityDetails]: OAuthScope.Read,
+  [ToolName.GetStrengthSets]: OAuthScope.Read,
+  [ToolName.ConfirmStrengthSession]: OAuthScope.Write,
+  [ToolName.GetTrainingStatus]: OAuthScope.Read,
+  [ToolName.CountActivities]: OAuthScope.Read,
+  [ToolName.GetSteps]: OAuthScope.Read,
+  [ToolName.GetHeartRate]: OAuthScope.Read,
+  [ToolName.GetSleepData]: OAuthScope.Read,
+  [ToolName.GetSleepDuration]: OAuthScope.Read,
+  [ToolName.GetDailyWeight]: OAuthScope.Read,
+  [ToolName.GetDailyHydration]: OAuthScope.Read,
+  [ToolName.GetWorkouts]: OAuthScope.Read,
+  [ToolName.GetGolfSummary]: OAuthScope.Read,
+  [ToolName.GetDailySummary]: OAuthScope.Read,
+  [ToolName.GetNutrition]: OAuthScope.Read,
+  [ToolName.GetSleep]: OAuthScope.Read,
+  [ToolName.LogLift]: OAuthScope.Write,
+  [ToolName.GetLiftHistory]: OAuthScope.Read,
+  [ToolName.GetLiftProgress]: OAuthScope.Read,
+  [ToolName.UpdateLift]: OAuthScope.Write,
+  [ToolName.DeleteLift]: OAuthScope.Write,
+  [ToolName.CreateWorkout]: OAuthScope.Write,
+  [ToolName.DeleteWorkout]: OAuthScope.Write,
+};
+
+/**
  * Garmin Connect API endpoints called via the library's public get()
  * escape hatch (no dedicated wrapper method exists for these).
  */
@@ -400,6 +457,7 @@ export enum AuditEvent {
   TokenRevoked = 'auth.token_revoked',
   McpUnauthorized = 'auth.mcp_unauthorized',
   ToolInvoked = 'tool.invoked',
+  ToolInsufficientScope = 'tool.insufficient_scope',
 }
 
 /**
@@ -412,7 +470,9 @@ export const OAUTH = {
   refreshTokenTtlSeconds: 30 * 24 * 60 * 60,
   authorizationCodeTtlSeconds: 10 * 60,
   pendingAuthorizationTtlSeconds: 10 * 60,
-  scopesSupported: ['garmin:read'],
+  scopesSupported: [OAuthScope.Read, OAuthScope.Write],
+  /** Granted when an authorization request names no scope at all. */
+  defaultScopes: [OAuthScope.Read],
   /** bcrypt hashes start with $2a$/$2b$/$2y$ followed by the cost factor. */
   bcryptHashPattern: /^\$2[aby]\$\d{2}\$/,
   bcryptCost: 12,

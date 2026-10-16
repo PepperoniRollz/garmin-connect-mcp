@@ -34,8 +34,16 @@ disclosure preferred.
 - PKCE S256 is mandatory; `plain` is rejected. Dynamic client registration
   is restricted by a redirect-URI allowlist (claude.ai/claude.com callbacks
   and RFC 8252 loopback).
-- Login and MCP endpoints are rate limited per IP; auth events and tool
-  invocations (tool name only, never payloads) are audit-logged to stderr.
+- Two OAuth scopes: `garmin:read` (baseline, default) and `garmin:write`.
+  Every tool declares its scope (`TOOL_SCOPE` in `src/constants.ts`) and is
+  checked per call against the bearer token's scopes, so a token granted
+  only read access cannot invoke a write tool; `garmin:write` is granted
+  only when explicitly requested and is shown on the consent page. Unknown
+  scopes are refused. Pre-existing tokens with no scopes are narrowed to
+  read-only.
+- Login and MCP endpoints are rate limited per IP; auth events, tool
+  invocations and scope denials (tool name only, never payloads) are
+  audit-logged to stderr.
 
 ## Dependency audit status (June 2026)
 

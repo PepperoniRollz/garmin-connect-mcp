@@ -12,6 +12,7 @@ import {OAuthRegisteredClientsStore} from '@modelcontextprotocol/sdk/server/auth
 import {
   InvalidClientMetadataError,
   InvalidGrantError,
+  InvalidScopeError,
   InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {
@@ -25,13 +26,51 @@ import {
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 
-import {AuditEvent, OAUTH} from '../constants.js';
+import {AuditEvent, isSupportedScope, OAUTH} from '../constants.js';
 import {logger} from '../logger.js';
 import {AuthDb, newOpaqueToken, nowSeconds, TokenKind} from './db.js';
-import {renderErrorPage, renderLoginPage} from './loginPage.js';
+import {
+  LoginPageOptions,
+  renderErrorPage,
+  renderLoginPage,
+} from './loginPage.js';
 import {isAllowedRedirectUri} from './redirectUris.js';
 
 const BEARER_TOKEN_TYPE = 'Bearer';
+
+/**
+ * The SDK splits the raw `scope` parameter on single spaces, so an empty
+ * value or doubled/leading/trailing spaces yield '' entries. Those are
+ * separator noise, not scope tokens (RFC 6749 §3.3), so drop them.
+ */
+function scopeTokens(scopes: string[]): string[] {
+  return scopes.filter(scope => scope !== '');
+}
+
+/**
+ * Scopes a grant will carry for an authorization request: unknown scopes
+ * are refused (RFC 6749 §3.3 `invalid_scope`), an empty request receives
+ * the default, and read is always included as the baseline. Write is only
+ * ever granted when the client explicitly asks for it.
+ */
+function resolveRequestedScopes(requested: string[]): string[] {
+  const tokens = scopeTokens(requested);
+  const unknown = tokens.filter(scope => !isSupportedScope(scope));
+  if (unknown.length > 0) {
+    throw new InvalidScopeError(`Unsupported scope: ${unknown.join(' ')}`);
+  }
+  return [...new Set<string>([...OAUTH.defaultScopes, ...tokens])];
+}
+
+/**
+ * Tokens issued before scopes were enforced may carry no scopes at all.
+ * They had unrestricted access then, so narrowing them to the read
+ * baseline (instead of breaking reads) is strictly safer; write requires a
+ * fresh grant that names it.
+ */
+function effectiveScopes(scopes: string[]): string[] {
+  return scopes.length === 0 ? [...OAUTH.defaultScopes] : scopes;
+}
 
 export class OwnerAuthorizationProvider implements OAuthServerProvider {
   constructor(private readonly db: AuthDb) {}
@@ -82,13 +121,17 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
       return;
     }
 
+    // Throws InvalidScopeError for unknown scopes; the SDK router turns that
+    // into an `error=invalid_scope` redirect to the (allowlisted) client.
+    const scopes = resolveRequestedScopes(params.scopes ?? []);
+
     const pendingId = newOpaqueToken();
     this.db.createPendingAuthorization({
       id: pendingId,
       clientId: client.client_id,
       codeChallenge: params.codeChallenge,
       redirectUri: params.redirectUri,
-      scopes: params.scopes ?? [],
+      scopes,
       state: params.state,
       resource: params.resource?.href,
       expiresAt: nowSeconds() + OAUTH.pendingAuthorizationTtlSeconds,
@@ -96,7 +139,25 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     res
       .status(200)
       .type('html')
-      .send(renderLoginPage({pendingId, clientName: client.client_name}));
+      .send(
+        renderLoginPage({pendingId, clientName: client.client_name, scopes}),
+      );
+  }
+
+  /**
+   * Consent details (client, requested scopes) for re-rendering the login
+   * page, e.g. after a wrong password. Undefined once the pending login has
+   * expired or been consumed.
+   */
+  describePendingAuthorization(
+    pendingId: string,
+  ): Pick<LoginPageOptions, 'clientName' | 'scopes'> | undefined {
+    const pending = this.db.getPendingAuthorization(pendingId);
+    if (pending === undefined) return undefined;
+    return {
+      clientName: this.db.getClient(pending.clientId)?.client_name,
+      scopes: pending.scopes,
+    };
   }
 
   async challengeForAuthorizationCode(
@@ -131,6 +192,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     const tokens = this.issueTokens(
       client.client_id,
       record.scopes,
+      record.scopes,
       record.resource,
     );
     logger.info('audit', {
@@ -149,19 +211,20 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     if (record === undefined || record.clientId !== client.client_id) {
       throw new InvalidGrantError('Invalid or expired refresh token');
     }
-    const grantedScopes = record.scopes;
-    if (
-      scopes !== undefined &&
-      scopes.some(scope => !grantedScopes.includes(scope))
-    ) {
-      throw new InvalidGrantError('Requested scopes exceed the original grant');
+    const grantedScopes = effectiveScopes(record.scopes);
+    const requested = scopes !== undefined ? scopeTokens(scopes) : [];
+    if (requested.some(scope => !grantedScopes.includes(scope))) {
+      throw new InvalidScopeError('Requested scopes exceed the original grant');
     }
     // OAuth 2.1 refresh token rotation: the presented token is consumed.
     this.db.deleteToken(refreshToken);
 
+    // RFC 6749 §6: a narrower request scopes only the new access token; the
+    // rotated refresh token keeps the full original grant.
     const tokens = this.issueTokens(
       client.client_id,
-      scopes ?? grantedScopes,
+      requested.length > 0 ? requested : grantedScopes,
+      grantedScopes,
       record.resource,
     );
     logger.info('audit', {
@@ -179,7 +242,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     return {
       token,
       clientId: record.clientId,
-      scopes: record.scopes,
+      scopes: effectiveScopes(record.scopes),
       expiresAt: record.expiresAt,
       resource:
         record.resource !== undefined ? new URL(record.resource) : undefined,
@@ -227,6 +290,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
   private issueTokens(
     clientId: string,
     scopes: string[],
+    refreshScopes: string[],
     resource?: string,
   ): OAuthTokens {
     const accessToken = newOpaqueToken();
@@ -242,7 +306,7 @@ export class OwnerAuthorizationProvider implements OAuthServerProvider {
     this.db.insertToken(refreshToken, {
       kind: TokenKind.Refresh,
       clientId,
-      scopes,
+      scopes: refreshScopes,
       resource,
       expiresAt: now + OAUTH.refreshTokenTtlSeconds,
     });

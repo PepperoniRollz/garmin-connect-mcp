@@ -3,7 +3,12 @@
  * flow. No client-side dependencies; the pending authorization id binds the
  * form post back to the OAuth request that triggered it.
  */
-import {AuthRoutePath} from '../constants.js';
+import {
+  AuthRoutePath,
+  isSupportedScope,
+  OAUTH_SCOPE_DESCRIPTIONS,
+  OAuthScope,
+} from '../constants.js';
 
 /** Form field names shared between the login page and the login handler. */
 export enum LoginField {
@@ -14,7 +19,29 @@ export enum LoginField {
 export interface LoginPageOptions {
   pendingId: string;
   clientName?: string;
+  /** Scopes the token will carry if the owner approves. */
+  scopes: string[];
   errorMessage?: string;
+}
+
+/** One list item per requested scope; unknown scopes still render (escaped). */
+function renderScopeList(scopes: string[]): string {
+  const items = scopes
+    .map(scope => {
+      const description = isSupportedScope(scope)
+        ? ` — ${escapeHtml(OAUTH_SCOPE_DESCRIPTIONS[scope])}`
+        : '';
+      return `<li><code>${escapeHtml(scope)}</code>${description}</li>`;
+    })
+    .join('\n    ');
+  const writeWarning = scopes.includes(OAuthScope.Write)
+    ? '<p class="warn">This grant includes write access: the client will be able to change your lift log and Garmin workouts.</p>'
+    : '';
+  return `<p>Requested access:</p>
+  <ul class="scopes">
+    ${items}
+  </ul>
+  ${writeWarning}`;
 }
 
 function escapeHtml(value: string): string {
@@ -46,6 +73,8 @@ export function renderLoginPage(options: LoginPageOptions): string {
     body { font-family: system-ui, sans-serif; max-width: 24rem; margin: 4rem auto; padding: 0 1rem; color: #222; }
     h1 { font-size: 1.25rem; }
     .error { color: #b00020; }
+    .warn { color: #8a4b00; }
+    .scopes { padding-left: 1.25rem; }
     label { display: block; margin: 1rem 0 0.25rem; }
     input[type=password] { width: 100%; padding: 0.5rem; font-size: 1rem; }
     button { margin-top: 1rem; padding: 0.5rem 1.5rem; font-size: 1rem; }
@@ -54,6 +83,7 @@ export function renderLoginPage(options: LoginPageOptions): string {
 <body>
   <h1>Garmin Connect MCP</h1>
   <p>${client} is requesting access to this server. Enter the owner password to approve.</p>
+  ${renderScopeList(options.scopes)}
   ${error}
   <form method="post" action="${AuthRoutePath.Login}">
     <input type="hidden" name="${LoginField.PendingId}" value="${escapeHtml(options.pendingId)}">

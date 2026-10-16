@@ -4,6 +4,11 @@
  * concrete transport.
  */
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
+import {
+  ServerNotification,
+  ServerRequest,
+} from '@modelcontextprotocol/sdk/types.js';
 import {z} from 'zod';
 
 import {
@@ -12,9 +17,11 @@ import {
   LIFT_EXERCISES,
   LIFT_PROGRESSION,
   LiftExerciseKey,
+  OAuthScope,
   SERVER_INFO,
   STRENGTH_SETS,
   STRENGTH_WORKOUT,
+  TOOL_SCOPE,
   ToolName,
 } from './constants.js';
 import {todayDateString} from './clock.js';
@@ -141,17 +148,66 @@ function assessProgression(session: LiftSession): ProgressionAssessment {
   };
 }
 
-// `any` justified: the wrapper must be transparent to registerTool's
-// per-overload callback inference; only the tool NAME is logged, never args.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function audited<F extends (...args: any[]) => any>(
+export interface ServerOptions {
+  /**
+   * Gate every tool on its TOOL_SCOPE using the bearer token's scopes
+   * (HTTP mode). When enforcing, a request carrying no auth info is refused.
+   * Stdio mode has no bearer token by design and passes false.
+   */
+  enforceScopes: boolean;
+}
+
+type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+/** Tool-level error returned when the token lacks the scope a tool needs. */
+function insufficientScopeResult(
   toolName: ToolName,
-  handler: F,
-): F {
-  return ((...args: Parameters<F>) => {
-    logger.info('audit', {event: AuditEvent.ToolInvoked, tool: toolName});
-    return handler(...args);
-  }) as F;
+  scope: OAuthScope,
+): {content: {type: 'text'; text: string}[]; isError: true} {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `Insufficient scope: ${toolName} requires the ${scope} OAuth scope. Reconnect the client and grant ${scope} to use this tool.`,
+      },
+    ],
+    isError: true,
+  };
+}
+
+/**
+ * Builds the per-tool wrapper: audits every invocation and, when enforcing,
+ * refuses tools whose required scope the caller's token does not carry
+ * before the handler (and any side effect) runs.
+ */
+function toolWrapper(options: ServerOptions) {
+  // `any` justified: the wrapper must be transparent to registerTool's
+  // per-overload callback inference; only the tool NAME is logged, never args.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function audited<F extends (...args: any[]) => any>(
+    toolName: ToolName,
+    handler: F,
+  ): F {
+    return ((...args: Parameters<F>) => {
+      const required = TOOL_SCOPE[toolName];
+      if (options.enforceScopes) {
+        // The SDK passes `extra` last for both handler shapes:
+        // (args, extra) with an inputSchema, (extra) without one.
+        const extra = args[args.length - 1] as ToolExtra | undefined;
+        const scopes = extra?.authInfo?.scopes ?? [];
+        if (!scopes.includes(required)) {
+          logger.info('audit', {
+            event: AuditEvent.ToolInsufficientScope,
+            tool: toolName,
+            requiredScope: required,
+          });
+          return insufficientScopeResult(toolName, required);
+        }
+      }
+      logger.info('audit', {event: AuditEvent.ToolInvoked, tool: toolName});
+      return handler(...args);
+    }) as F;
+  };
 }
 
 /** Loose view of the activity-detail payload fields the transform needs. */
@@ -241,11 +297,12 @@ function metaFromDetail(detail: ActivityDetail): StrengthSessionMeta {
   };
 }
 
-export function createServer(): McpServer {
+export function createServer(options: ServerOptions): McpServer {
   const server = new McpServer({
     name: SERVER_INFO.name,
     version: SERVER_INFO.version,
   });
+  const audited = toolWrapper(options);
 
   server.registerTool(
     ToolName.GetUserProfile,

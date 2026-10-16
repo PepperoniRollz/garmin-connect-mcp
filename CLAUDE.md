@@ -39,7 +39,7 @@ dist/               — Compiled JS output
 - `npm start` — Run compiled output (stdio mode by default)
 - `npm run typecheck` — `tsc --noEmit` over src and scripts
 - `npm run lint` / `npm run fix` — gts (Google TS style; prettier single-quote config in `.prettierrc.cjs`)
-- `npm test` — e2e orchestrator: HTTP server with synthetic creds + OAuth flow + session lifecycle suites (no Garmin account needed)
+- `npm test` — e2e orchestrator: HTTP server with synthetic creds + OAuth flow, scope enforcement, session lifecycle and lift-log suites (no Garmin account needed)
 - `npm run hash-password` — generate SERVER_OWNER_PASSWORD_HASH
 - `npx @modelcontextprotocol/inspector` — Debug/test tools interactively
 
@@ -49,7 +49,8 @@ dist/               — Compiled JS output
 - **Credentials**: `CredentialProvider` abstraction. HTTP mode: `GARMIN_USERNAME`/`GARMIN_PASSWORD` env vars only (required, validated at startup). Stdio mode: env vars if set, else OS credential store (macOS Keychain / Windows Credential Manager / Linux libsecret).
 - **Garmin token cache**: `TOKEN_CACHE_DIR` (default `~/.garmin-mcp-tokens`); reused across sessions, fresh login on expiry.
 - **Client singleton**: entry points call `configureGarminClient()`; tools call `getClient()` which lazily initializes and caches.
-- **Tools**: registered in `createServer()` via `server.registerTool()`. Tools accept optional date strings (`YYYY-MM-DD`) and return JSON-formatted results.
+- **Tools**: registered in `createServer({enforceScopes})` via `server.registerTool()`. Tools accept optional date strings (`YYYY-MM-DD`) and return JSON-formatted results.
+- **OAuth scopes**: `garmin:read` (baseline/default) and `garmin:write`. Every tool has an entry in `TOOL_SCOPE` (`src/constants.ts`, exhaustive over `ToolName`); in HTTP mode the `audited()` wrapper refuses a call whose token lacks the tool's scope before the handler runs. Stdio has no bearer token and passes `enforceScopes: false`.
 
 ## Conventions
 - **No magic strings/numbers** — every env var name, route, header, and default lives in `src/constants.ts` as an enum or `as const` object
